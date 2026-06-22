@@ -1,0 +1,18 @@
+{
+  "name": "ashrt-link",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ashrt.link - a small, fast URL shortener with click stats",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1"
+  }
+}

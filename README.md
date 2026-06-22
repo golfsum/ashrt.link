@@ -52,8 +52,20 @@ ASHRT_API_KEY=the-same-key-you-set-here
 Restart the Schedlytics backend. Now every short link it creates lives on
 `ashrt.link` and shows up in this dashboard with its click stats.
 
-## Deploying
+## Deploying to Vercel
 
-Run this on any Node host (Render, Railway, Fly, a small VPS), point the
-`ashrt.link` domain at it, and set `BASE_URL=https://ashrt.link`. The file-based
-store is fine for low volume; swap `store.js` for a database when you outgrow it.
+This repo is Vercel-ready (`vercel.json` + `api/index.js` run the whole app as
+one function). Steps:
+
+1. Import the repo in Vercel. Framework Preset: **Other**, no build command.
+2. Storage tab > Create > **KV**. Vercel injects `KV_REST_API_URL` and
+   `KV_REST_API_TOKEN`, and `store.js` switches from the local file to KV
+   automatically (Vercel's filesystem is read-only, so this is required).
+3. Environment Variables: `API_KEY=<long random string>` and
+   `BASE_URL=https://ashrt.link`.
+4. Add the `ashrt.link` domain to the project.
+
+Locally it needs nothing: `npm start` uses a JSON file and `http://localhost:4000`.
+
+To let Schedlytics mint links here, put the same `API_KEY` in the Schedlytics
+backend as `ASHRT_API_KEY` (see that repo's DEPLOY.md).
