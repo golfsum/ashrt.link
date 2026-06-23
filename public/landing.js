@@ -12,7 +12,7 @@ async function init() {
     ? `<a href="/dashboard">Dashboard</a><a href="/account">Account</a>`
     : `<a href="/login">Log in</a><a class="btn btn-sm" href="/signup">Get started</a>`
 
-  // Custom alias is an account feature — hide the input when logged out.
+  // Custom alias is an account feature - hide the input when logged out.
   if (!user) {
     $('alias').style.display = 'none'
     $('alias-hint').style.display = 'block'

@@ -7,7 +7,7 @@ Schedlytics.
 
 ## What you get
 
-- **Accounts** — email + password, or sign in with Google / GitHub
+- **Accounts** - email + password, or sign in with Google / GitHub
 - A per-user dashboard to create links and read their stats
 - Custom aliases (or an auto-generated short code)
 - Click counts, last-clicked time, and a 7-day sparkline per link
@@ -23,7 +23,7 @@ npm start                # http://localhost:4000
 ```
 
 Open `http://localhost:4000`, click **Get started**, and create an account.
-Locally it stores everything in JSON files (`.links.json`, `.users.json`) — no
+Locally it stores everything in JSON files (`.links.json`, `.users.json`) - no
 database needed.
 
 ## Pages
@@ -80,8 +80,8 @@ one serverless function). Steps:
    and `KV_REST_API_TOKEN`; `store.js` switches from local files to KV
    automatically (Vercel's filesystem is read-only, so this is required).
 3. **Environment Variables** (Production):
-   - `SESSION_SECRET` — a long random string (signs login cookies)
-   - `BASE_URL` — your canonical domain, e.g. `https://www.ashrt.link`
+   - `SESSION_SECRET` - a long random string (signs login cookies)
+   - `BASE_URL` - your canonical domain, e.g. `https://www.ashrt.link`
    - *(optional, for social login)* `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
      and/or `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`
 4. **Domains** → add `ashrt.link` and `www.ashrt.link`; pick one as canonical and

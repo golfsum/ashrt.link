@@ -11,7 +11,7 @@ import bcrypt from 'bcryptjs'
 // string so cookies survive across deployments/instances. Falls back to API_KEY.
 const SECRET = process.env.SESSION_SECRET || process.env.API_KEY || 'insecure-dev-secret-change-me'
 if (SECRET === 'insecure-dev-secret-change-me') {
-  console.warn('  [auth] SESSION_SECRET is not set — using an insecure dev secret.')
+  console.warn('  [auth] SESSION_SECRET is not set - using an insecure dev secret.')
 }
 
 const isProd = Boolean(process.env.VERCEL)
@@ -87,7 +87,7 @@ export function clearSession(res) {
 /**
  * Resolve the current user from either a session cookie (dashboard) or an
  * `x-api-key` header (Schedlytics / programmatic). Sets req.user or leaves it
- * undefined. Never rejects — use requireUser to gate.
+ * undefined. Never rejects - use requireUser to gate.
  */
 export function attachUser(users) {
   return async (req, _res, next) => {

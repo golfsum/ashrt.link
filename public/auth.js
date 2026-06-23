@@ -15,7 +15,7 @@ fetch('/auth/config')
     if (providers.google) btns.push(oauthBtn('google', 'Continue with Google'))
     if (providers.github) btns.push(oauthBtn('github', 'Continue with GitHub'))
     if (!btns.length) {
-      // No social logins configured — hide the divider, keep email/password.
+      // No social logins configured - hide the divider, keep email/password.
       wrap.style.display = 'none'
       $('divider').style.display = 'none'
       return
