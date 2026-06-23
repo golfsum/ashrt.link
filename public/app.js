@@ -176,7 +176,7 @@ $('logout').addEventListener('click', async (e) => {
   if (!user) return
   $('who').textContent = user.plan === 'pro' ? `${user.email} · Pro` : user.email
   if (new URLSearchParams(location.search).get('upgraded')) {
-    alert("You're on Pro 🎉 Thanks for upgrading - your links are now unlimited.")
+    alert("You're on Pro now. Thanks! Your links are unlimited.")
     history.replaceState({}, '', '/dashboard')
   }
   await load()
