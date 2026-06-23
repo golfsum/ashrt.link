@@ -6,6 +6,7 @@
   "description": "ashrt.link - a small, fast URL shortener with click stats",
   "main": "server.js",
   "scripts": {
+    "build": "echo \"no build step\"",
     "start": "node server.js",
     "dev": "node --watch server.js"
   },
