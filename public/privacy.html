@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="ashrt.link privacy policy." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+    <title>Privacy Policy · ashrt.link</title>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <a class="logo" href="/">
+          <svg viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="8" fill="#14141b" stroke="#2a2a38" />
+            <path d="M13 19l6-6M12.5 14.5l-2 2a3.5 3.5 0 0 0 5 5l2-2M19.5 17.5l2-2a3.5 3.5 0 0 0-5-5l-2 2"
+              fill="none" stroke="#818cf8" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          ashrt<span class="dot">.link</span>
+        </a>
+        <nav class="nav"><a href="/">Home</a></nav>
+      </header>
+
+      <article class="prose">
+        <h1>Privacy Policy</h1>
+        <p class="prose-meta">Last updated: June 23, 2026</p>
+
+        <p>
+          ashrt.link ("we", "us") is a URL shortener. This policy explains what we collect, why, and your choices.
+          By using the service you agree to this policy.
+        </p>
+
+        <h2>Information we collect</h2>
+        <ul>
+          <li><b>Account information.</b> When you sign up we store your email address and name. If you register with a
+            password, we store it only as a salted bcrypt hash — never in plain text. If you sign in with Google or
+            GitHub, we receive your basic profile (name, email, and a provider account ID).</li>
+          <li><b>Links you create.</b> The destination URL, the short code/alias, and creation time.</li>
+          <li><b>Click data.</b> When someone follows a short link we increment a click count, record the time of the
+            last click, and keep a per-day click tally. We do not build advertising profiles of visitors.</li>
+          <li><b>Cookies.</b> A single signed, HttpOnly session cookie keeps you logged in. We don't use third-party
+            advertising or tracking cookies.</li>
+          <li><b>Payment information.</b> If you subscribe to Pro, payment is handled by Stripe. We never see or store
+            your card number — we keep only a Stripe customer/subscription reference and your plan status.</li>
+        </ul>
+
+        <h2>How we use your information</h2>
+        <ul>
+          <li>To operate the service: create and resolve short links and show you click statistics.</li>
+          <li>To authenticate you and keep your account secure.</li>
+          <li>To process subscriptions and manage your plan.</li>
+          <li>To respond to support requests.</li>
+        </ul>
+        <p>We do not sell your personal information.</p>
+
+        <h2>Service providers</h2>
+        <p>We rely on a few processors to run the service:</p>
+        <ul>
+          <li><b>Vercel</b> — hosting.</li>
+          <li><b>Upstash / Vercel KV</b> — storage of accounts, links, and stats.</li>
+          <li><b>Stripe</b> — subscription billing (Pro).</li>
+          <li><b>Google and GitHub</b> — optional sign-in.</li>
+        </ul>
+
+        <h2>Data retention</h2>
+        <p>
+          We keep your account, links, and their stats until you delete them or close your account. You can delete
+          individual links from your dashboard at any time. To delete your account and associated data, contact us at
+          the address below.
+        </p>
+
+        <h2>Your rights</h2>
+        <p>
+          You can access and delete your links from your dashboard, and request a copy or deletion of your account data
+          by emailing us. Depending on where you live, you may have additional rights under laws such as GDPR or CCPA;
+          we honor valid requests.
+        </p>
+
+        <h2>Children</h2>
+        <p>The service is not directed to children under 13, and we don't knowingly collect their information.</p>
+
+        <h2>Changes</h2>
+        <p>
+          We may update this policy. Material changes will be reflected by the "last updated" date above, and where
+          appropriate we'll notify you.
+        </p>
+
+        <h2>Contact</h2>
+        <p>Questions? Email <a href="mailto:support@ashrt.link">support@ashrt.link</a>.</p>
+      </article>
+
+      <footer>
+        <span>ashrt.link &middot; your links, your numbers.</span>
+        <span class="foot-links"><a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></span>
+      </footer>
+    </div>
+  </body>
+</html>

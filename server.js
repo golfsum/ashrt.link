@@ -83,9 +83,11 @@ app.use(attachUser(users))
 // Names that can't be used as a custom alias (they're routes or static assets).
 const RESERVED = new Set([
   'api', 'auth', 'login', 'signup', 'dashboard', 'account', 'health',
+  'privacy', 'terms',
   'robots.txt', 'favicon.svg', 'index.html', 'styles.css',
   'app.js', 'auth.js', 'landing.js', 'account.js',
   'login.html', 'signup.html', 'dashboard.html', 'account.html',
+  'privacy.html', 'terms.html',
 ])
 
 const shortUrl = (slug) => `${BASE_URL}/${slug}`
