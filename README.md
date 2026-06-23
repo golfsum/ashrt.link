@@ -1,71 +1,97 @@
 # ashrt.link
 
-A small, fast URL shortener with click stats. Paste a long URL, get a short
-`ashrt.link/abc123`, and watch the clicks add up. It powers the short links in
-Schedlytics, but it works fine on its own.
+A small, fast URL shortener with accounts and click stats. Sign up, paste a long
+URL, get a short `ashrt.link/abc123`, and watch the clicks add up. Each user has
+their own links, dashboard, and API key. It also powers the short links in
+Schedlytics.
 
 ## What you get
 
-- A one-page dashboard to create links and read their stats
+- **Accounts** — email + password, or sign in with Google / GitHub
+- A per-user dashboard to create links and read their stats
 - Custom aliases (or an auto-generated short code)
 - Click counts, last-clicked time, and a 7-day sparkline per link
-- A clean API so other apps (like Schedlytics) can create links for you
+- A **personal API key** per user so other apps (like Schedlytics) can create
+  links on that account
 
 ## Run it
 
 ```bash
-cp .env.example .env     # set a long random API_KEY
+cp .env.example .env     # set SESSION_SECRET (and optionally OAuth creds)
 npm install
 npm start                # http://localhost:4000
 ```
 
-Open the dashboard, paste your `API_KEY` in the box at the top right, and start
-shortening. The key is stored in your browser only.
+Open `http://localhost:4000`, click **Get started**, and create an account.
+Locally it stores everything in JSON files (`.links.json`, `.users.json`) — no
+database needed.
+
+## Pages
+
+| Path | What |
+|------|------|
+| `/` | Public landing page + quick shortener (funnels to sign up) |
+| `/signup`, `/login` | Create an account / log in (email-password or OAuth) |
+| `/dashboard` | Your links and stats (requires login) |
+| `/account` | Your profile and personal API key |
 
 ## API
 
-The redirect (`GET /:slug`) is public. Everything else needs the
-`x-api-key` header.
+The redirect (`GET /:slug`) is public. Everything else needs **either** a
+session cookie (dashboard) **or** an `x-api-key` header with your personal API
+key (from `/account`).
 
 | Method | Route | Body | Notes |
 |--------|-------|------|-------|
-| POST | `/api/links` | `{ "url": "...", "alias": "optional", "source": "optional" }` | Returns `{ slug, url, shortUrl, clicks, ... }` |
-| GET | `/api/links` | | `{ totalLinks, totalClicks, links: [...] }` |
-| DELETE | `/api/links/:slug` | | Removes a link |
-| GET | `/:slug` | | 302 redirect, counts the click |
+| POST | `/api/links` | `{ "url": "...", "alias": "optional", "source": "optional" }` | Creates a link owned by you |
+| GET | `/api/links` | | Your links: `{ totalLinks, totalClicks, links: [...] }` |
+| DELETE | `/api/links/:slug` | | Removes one of your links |
+| GET | `/api/account` | | Your profile + API key |
+| POST | `/api/account/rotate-key` | | Issues a new API key |
+| GET | `/:slug` | | 302 redirect, counts the click (public) |
 
 ```bash
-curl -X POST http://localhost:4000/api/links \
-  -H "x-api-key: YOUR_KEY" -H "Content-Type: application/json" \
+curl -X POST https://www.ashrt.link/api/links \
+  -H "x-api-key: ak_YOUR_PERSONAL_KEY" -H "Content-Type: application/json" \
   -d '{"url":"example.com/a/very/long/path"}'
 ```
 
 ## Use it from Schedlytics
 
-In the Schedlytics backend `.env`, point it at this service:
+Each Schedlytics user gets their own ashrt.link account, opens `/account`, and
+copies their personal API key into the Schedlytics backend `.env`:
 
 ```
-ASHRT_API_URL=https://ashrt.link
-ASHRT_API_KEY=the-same-key-you-set-here
+ASHRT_API_URL=https://www.ashrt.link
+ASHRT_API_KEY=ak_that-users-personal-key
 ```
 
-Restart the Schedlytics backend. Now every short link it creates lives on
-`ashrt.link` and shows up in this dashboard with its click stats.
+Every short link Schedlytics mints then belongs to that user and shows up in
+their dashboard with its click stats.
 
 ## Deploying to Vercel
 
 This repo is Vercel-ready (`vercel.json` + `api/index.js` run the whole app as
-one function). Steps:
+one serverless function). Steps:
 
-1. Import the repo in Vercel. Framework Preset: **Other**, no build command.
-2. Storage tab > Create > **KV**. Vercel injects `KV_REST_API_URL` and
-   `KV_REST_API_TOKEN`, and `store.js` switches from the local file to KV
+1. Import the repo. Framework Preset **Other**; `vercel.json` already pins the
+   (no-op) build command, output directory, and clean URLs.
+2. **Storage** tab → Create → **KV / Upstash**. Vercel injects `KV_REST_API_URL`
+   and `KV_REST_API_TOKEN`; `store.js` switches from local files to KV
    automatically (Vercel's filesystem is read-only, so this is required).
-3. Environment Variables: `API_KEY=<long random string>` and
-   `BASE_URL=https://ashrt.link`.
-4. Add the `ashrt.link` domain to the project.
+3. **Environment Variables** (Production):
+   - `SESSION_SECRET` — a long random string (signs login cookies)
+   - `BASE_URL` — your canonical domain, e.g. `https://www.ashrt.link`
+   - *(optional, for social login)* `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
+     and/or `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`
+4. **Domains** → add `ashrt.link` and `www.ashrt.link`; pick one as canonical and
+   point `BASE_URL` at it.
 
-Locally it needs nothing: `npm start` uses a JSON file and `http://localhost:4000`.
+### OAuth callback URLs
 
-To let Schedlytics mint links here, put the same `API_KEY` in the Schedlytics
-backend as `ASHRT_API_KEY` (see that repo's DEPLOY.md).
+When creating the OAuth apps, set the redirect/callback to match `BASE_URL`:
+
+- Google: `https://www.ashrt.link/auth/google/callback`
+- GitHub: `https://www.ashrt.link/auth/github/callback`
+
+Leave a provider's env vars blank and its button simply doesn't show.
