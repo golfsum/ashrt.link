@@ -68,11 +68,13 @@
       </section>
 
       <section class="panel">
-        <h2>Use it from Schedlytics</h2>
-        <p class="panel-sub">In your Schedlytics backend <span class="mono">.env</span>, point it at this service with your key:</p>
-        <pre id="snippet" class="snippet mono">ASHRT_API_URL=https://ashrt.link
-ASHRT_API_KEY=your-key-above</pre>
-        <p class="panel-sub">Every short link Schedlytics mints then shows up in your dashboard with its click stats.</p>
+        <h2>Using the API</h2>
+        <p class="panel-sub">
+          Create links from your own apps by sending your key as the <span class="mono">x-api-key</span> header.
+          Any link you make this way appears in your dashboard with its click stats.
+        </p>
+        <pre id="snippet" class="snippet mono"></pre>
+        <p class="panel-sub">Base URL: <span id="api-base" class="mono">—</span></p>
       </section>
 
       <footer>

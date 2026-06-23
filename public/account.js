@@ -8,7 +8,14 @@ function renderKey() {
 }
 
 function renderSnippet() {
-  $('snippet').textContent = `ASHRT_API_URL=${location.origin}\nASHRT_API_KEY=${revealed ? apiKey : 'your-key-above'}`
+  const key = revealed ? apiKey : 'YOUR_API_KEY'
+  $('snippet').textContent =
+    `curl -X POST ${location.origin}/api/links \\\n` +
+    `  -H "x-api-key: ${key}" \\\n` +
+    `  -H "Content-Type: application/json" \\\n` +
+    `  -d '{"url":"https://example.com/long/path"}'`
+  const base = document.getElementById('api-base')
+  if (base) base.textContent = location.origin
 }
 
 async function load() {
