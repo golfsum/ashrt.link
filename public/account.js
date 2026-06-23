@@ -76,7 +76,7 @@ $('copykey').addEventListener('click', () => {
 })
 
 $('rotate').addEventListener('click', async () => {
-  if (!confirm('Rotate your API key? Apps using the old key (including Schedlytics) will stop working until you update them.')) return
+  if (!confirm('Rotate your API key? Any apps using the old key will stop working until you update them.')) return
   const res = await fetch('/api/account/rotate-key', { method: 'POST' })
   const data = await res.json()
   if (data.apiKey) {
