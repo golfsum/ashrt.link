@@ -202,3 +202,128 @@ footer a { color: var(--muted); text-decoration: none; }
   .row { grid-template-columns: 1fr auto; row-gap: 6px; }
   .row .dest, .row .when, .spark { display: none; }
 }
+
+/* ============================ added: SaaS shell ============================ */
+
+a.logo { text-decoration: none; color: var(--text); }
+
+/* top nav */
+.nav { margin-left: auto; display: flex; align-items: center; gap: 18px; }
+.nav a { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500; }
+.nav a:hover { color: var(--text); }
+.nav .who { color: var(--faint); font-size: 13px; }
+.btn-sm { padding: 8px 14px; font-size: 13px; border-radius: 9px; color: #0b0b0f; }
+.nav a.btn-sm { color: #0b0b0f; }
+.btn-sm:hover { color: #0b0b0f; }
+
+/* larger hero on the landing page */
+.hero-lg { padding: 40px 0 22px; }
+.hero-lg h1 { font-size: 48px; line-height: 1.05; }
+.hero-lg p { font-size: 16px; max-width: 560px; }
+.accent { color: var(--accent); }
+
+/* big buttons + blocks */
+.btn-lg { font-size: 16px; padding: 14px 26px; border-radius: 12px; display: inline-block; text-decoration: none; }
+.btn-block { width: 100%; padding: 13px; font-size: 15px; }
+
+/* features */
+.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 38px 0 10px; }
+.feature {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+}
+.feature .fi { font-size: 22px; }
+.feature h3 { font-size: 16px; margin: 10px 0 6px; }
+.feature p { color: var(--muted); font-size: 14px; line-height: 1.5; }
+
+/* call to action */
+.cta { text-align: center; padding: 46px 0 20px; }
+.cta h2 { font-size: 26px; letter-spacing: -0.02em; margin-bottom: 18px; }
+
+/* auth card */
+.auth-card {
+  max-width: 400px;
+  margin: 30px auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 28px;
+}
+.auth-card h1 { font-size: 24px; letter-spacing: -0.02em; }
+.auth-sub { color: var(--muted); font-size: 14px; margin-top: 6px; }
+.oauth { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+.oauth-btn {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 11px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.oauth-btn:hover { border-color: var(--accent); }
+.divider { display: flex; align-items: center; gap: 12px; color: var(--faint); font-size: 12px; margin: 18px 0; }
+.divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.auth-form { display: flex; flex-direction: column; gap: 10px; }
+.auth-form input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 12px 14px;
+  font-size: 15px;
+  font-family: inherit;
+}
+.auth-form input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(129,140,248,0.18); }
+.auth-err { color: #fb7185; font-size: 13px; min-height: 16px; }
+.auth-switch { text-align: center; color: var(--muted); font-size: 14px; margin-top: 16px; }
+.auth-switch a { color: var(--accent); text-decoration: none; }
+.auth-switch a:hover { text-decoration: underline; }
+
+/* account panels */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  margin-top: 14px;
+}
+.panel h2 { font-size: 17px; }
+.panel-sub { color: var(--muted); font-size: 13px; line-height: 1.55; margin: 6px 0 14px; }
+.field { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; }
+.field + .field { border-top: 1px solid var(--border); }
+.field label { color: var(--faint); font-size: 13px; }
+.field-val { font-size: 14px; }
+.key-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.key-row input {
+  flex: 1;
+  min-width: 200px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 11px 13px;
+  font-size: 13px;
+}
+.key-row input:focus { outline: none; border-color: var(--accent); }
+.danger-btn:hover { color: #fb7185; border-color: rgba(251,113,133,0.4); }
+.snippet {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  font-size: 13px;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+@media (max-width: 680px) {
+  .features { grid-template-columns: 1fr; }
+  .hero-lg h1 { font-size: 36px; }
+}

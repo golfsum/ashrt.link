@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+    <title>Account · ashrt.link</title>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <a class="logo" href="/">
+          <svg viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="8" fill="#14141b" stroke="#2a2a38" />
+            <path d="M13 19l6-6M12.5 14.5l-2 2a3.5 3.5 0 0 0 5 5l2-2M19.5 17.5l2-2a3.5 3.5 0 0 0-5-5l-2 2"
+              fill="none" stroke="#818cf8" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          ashrt<span class="dot">.link</span>
+        </a>
+        <nav class="nav">
+          <a href="/dashboard">Dashboard</a>
+          <a id="logout" href="#">Log out</a>
+        </nav>
+      </header>
+
+      <section class="hero">
+        <h1>Account</h1>
+        <p>Your profile and API key.</p>
+      </section>
+
+      <section class="panel">
+        <div class="field">
+          <label>Email</label>
+          <div id="email" class="field-val mono">—</div>
+        </div>
+        <div class="field">
+          <label>Sign-in method</label>
+          <div id="provider" class="field-val">—</div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>API key</h2>
+        <p class="panel-sub">
+          Use this to create links from your own apps (or Schedlytics). Send it as the
+          <span class="mono">x-api-key</span> header. Keep it secret — anyone with it can make links on your account.
+        </p>
+        <div class="key-row">
+          <input id="apikey" class="mono" type="text" readonly value="••••••••••••••••" />
+          <button id="reveal" class="copy">Show</button>
+          <button id="copykey" class="copy">Copy</button>
+          <button id="rotate" class="copy danger-btn">Rotate</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Use it from Schedlytics</h2>
+        <p class="panel-sub">In your Schedlytics backend <span class="mono">.env</span>, point it at this service with your key:</p>
+        <pre id="snippet" class="snippet mono">ASHRT_API_URL=https://ashrt.link
+ASHRT_API_KEY=your-key-above</pre>
+        <p class="panel-sub">Every short link Schedlytics mints then shows up in your dashboard with its click stats.</p>
+      </section>
+
+      <footer>
+        ashrt.link &middot; your links, your numbers.
+      </footer>
+    </div>
+
+    <script src="/account.js"></script>
+  </body>
+</html>

@@ -3,13 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="ashrt.link — a fast, free URL shortener with click analytics. Make long links short and see who clicks." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/styles.css" />
-    <title>ashrt.link — short links with click stats</title>
+    <title>Dashboard · ashrt.link</title>
   </head>
   <body>
     <div class="wrap">
@@ -22,15 +21,16 @@
           </svg>
           ashrt<span class="dot">.link</span>
         </a>
-        <nav id="nav" class="nav"></nav>
+        <nav class="nav">
+          <span id="who" class="who"></span>
+          <a href="/account">Account</a>
+          <a id="logout" href="#">Log out</a>
+        </nav>
       </header>
 
-      <section class="hero hero-lg">
-        <h1>Short links.<br />Real numbers.</h1>
-        <p>
-          Turn any long URL into a tidy <span class="mono accent">ashrt.link/x</span> and watch the clicks roll in —
-          totals, last-clicked, and a 7-day trend for every link. Free to start.
-        </p>
+      <section class="hero">
+        <h1>Your links</h1>
+        <p>Create a short link and track every click.</p>
       </section>
 
       <section class="create">
@@ -46,27 +46,23 @@
         </div>
       </section>
 
-      <section class="features">
-        <div class="feature">
-          <div class="fi">📊</div>
-          <h3>Click analytics</h3>
-          <p>Every link counts its clicks, remembers the last visit, and charts the last 7 days.</p>
-        </div>
-        <div class="feature">
-          <div class="fi">✏️</div>
-          <h3>Custom aliases</h3>
-          <p>Pick a memorable code like <span class="mono">/launch</span>, or let us generate one.</p>
-        </div>
-        <div class="feature">
-          <div class="fi">🔌</div>
-          <h3>Simple API</h3>
-          <p>Mint links from your own apps with a personal API key. Powers Schedlytics, too.</p>
-        </div>
+      <section class="stats">
+        <div class="stat"><div id="stat-links" class="n">0</div><div class="l">Links</div></div>
+        <div class="stat"><div id="stat-clicks" class="n">0</div><div class="l">Total clicks</div></div>
+        <div class="stat"><div id="stat-top" class="n mono">-</div><div class="l">Busiest link</div></div>
       </section>
 
-      <section class="cta">
-        <h2>Make your first short link in seconds.</h2>
-        <a class="btn btn-lg" href="/signup">Get started — it's free</a>
+      <section class="links">
+        <div class="head">
+          <span>Short link</span>
+          <span>Destination</span>
+          <span>Clicks</span>
+          <span>Created</span>
+          <span>Last 7 days</span>
+          <span></span>
+        </div>
+        <div id="rows"></div>
+        <div id="empty" class="empty">No links yet. Make your first one above.</div>
       </section>
 
       <footer>
@@ -74,6 +70,6 @@
       </footer>
     </div>
 
-    <script src="/landing.js"></script>
+    <script src="/app.js"></script>
   </body>
 </html>

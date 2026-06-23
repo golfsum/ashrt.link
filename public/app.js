@@ -1,24 +1,24 @@
 const $ = (id) => document.getElementById(id)
-const KEY_STORE = 'ashrt_key'
+const PENDING = 'ashrt_pending_url'
 
-let apiKey = localStorage.getItem(KEY_STORE) || ''
-$('key').value = apiKey
-
-function headers() {
-  const h = { 'Content-Type': 'application/json' }
-  if (apiKey) h['x-api-key'] = apiKey
-  return h
+// Gate the page: bounce to login if there's no session.
+async function requireSession() {
+  try {
+    const res = await fetch('/auth/me')
+    if (!res.ok) {
+      window.location.href = '/login'
+      return null
+    }
+    return (await res.json()).user
+  } catch {
+    window.location.href = '/login'
+    return null
+  }
 }
 
-$('key').addEventListener('input', (e) => {
-  apiKey = e.target.value.trim()
-  localStorage.setItem(KEY_STORE, apiKey)
-  const saved = $('keysaved')
-  saved.style.display = 'inline'
-  clearTimeout(window.__kt)
-  window.__kt = setTimeout(() => (saved.style.display = 'none'), 1200)
-  load()
-})
+function headers() {
+  return { 'Content-Type': 'application/json' }
+}
 
 function fmtDate(ts) {
   if (!ts) return ''
@@ -46,20 +46,17 @@ function sparkline(daily) {
   )
 }
 
-function shortLabel(url) {
-  return url.replace(/^https?:\/\//, '')
+const shortLabel = (url) => url.replace(/^https?:\/\//, '')
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
 }
 
 async function load() {
   let data
   try {
     const res = await fetch('/api/links', { headers: headers() })
-    if (res.status === 401) {
-      $('rows').innerHTML = ''
-      $('empty').textContent = 'Add your API key (top right) to see and manage links.'
-      $('empty').style.display = 'block'
-      return
-    }
+    if (res.status === 401) return (window.location.href = '/login')
     data = await res.json()
   } catch {
     return
@@ -72,7 +69,6 @@ async function load() {
 
   const rows = data.links
   $('empty').style.display = rows.length ? 'none' : 'block'
-  $('empty').textContent = 'No links yet. Make your first one above.'
 
   $('rows').innerHTML = rows
     .map(
@@ -97,10 +93,6 @@ async function load() {
   document.querySelectorAll('[data-del]').forEach((b) =>
     b.addEventListener('click', () => del(b.getAttribute('data-del'))),
   )
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
 }
 
 async function create() {
@@ -128,7 +120,7 @@ async function create() {
     $('alias').value = ''
     load()
   } catch {
-    alert('Network error. Is the server running?')
+    alert('Network error. Try again.')
   } finally {
     $('go').disabled = false
     $('go').textContent = 'Shorten'
@@ -149,11 +141,36 @@ function copy(text, btn) {
   }
 }
 
+// If the visitor started shortening on the homepage before signing up, finish
+// the job now that they're authenticated.
+async function runPending() {
+  const raw = localStorage.getItem(PENDING)
+  if (!raw) return
+  localStorage.removeItem(PENDING)
+  try {
+    const { url, alias } = JSON.parse(raw)
+    if (url) {
+      $('url').value = url
+      if (alias) $('alias').value = alias
+      await create()
+    }
+  } catch {}
+}
+
 $('go').addEventListener('click', create)
 $('url').addEventListener('keydown', (e) => e.key === 'Enter' && create())
 $('alias').addEventListener('keydown', (e) => e.key === 'Enter' && create())
-$('result-copy').addEventListener('click', () => {
-  copy($('result-link').href, $('result-copy'))
+$('result-copy').addEventListener('click', () => copy($('result-link').href, $('result-copy')))
+$('logout').addEventListener('click', async (e) => {
+  e.preventDefault()
+  await fetch('/auth/logout', { method: 'POST' })
+  window.location.href = '/'
 })
 
-load()
+;(async () => {
+  const user = await requireSession()
+  if (!user) return
+  $('who').textContent = user.email
+  await load()
+  await runPending()
+})()
