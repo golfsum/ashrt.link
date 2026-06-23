@@ -109,7 +109,11 @@ async function create() {
     })
     const data = await res.json()
     if (!res.ok) {
-      alert(data.error || 'Could not shorten that')
+      if (data.needsUpgrade && confirm(data.error + '\n\nGo to your account to upgrade?')) {
+        window.location.href = '/account'
+      } else {
+        alert(data.error || 'Could not shorten that')
+      }
       return
     }
     const link = $('result-link')
@@ -170,7 +174,11 @@ $('logout').addEventListener('click', async (e) => {
 ;(async () => {
   const user = await requireSession()
   if (!user) return
-  $('who').textContent = user.email
+  $('who').textContent = user.plan === 'pro' ? `${user.email} · Pro` : user.email
+  if (new URLSearchParams(location.search).get('upgraded')) {
+    alert("You're on Pro 🎉 Thanks for upgrading — your links are now unlimited.")
+    history.replaceState({}, '', '/dashboard')
+  }
   await load()
   await runPending()
 })()

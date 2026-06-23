@@ -1,40 +1,49 @@
 const $ = (id) => document.getElementById(id)
-const PENDING = 'ashrt_pending_url'
+let user = null
 
-// Fill the top nav based on whether someone is signed in.
-async function renderNav() {
-  let user = null
+async function init() {
   try {
     const res = await fetch('/auth/me')
     if (res.ok) user = (await res.json()).user
   } catch {}
-  const nav = $('nav')
-  if (!nav) return
-  nav.innerHTML = user
+
+  // Nav
+  $('nav').innerHTML = user
     ? `<a href="/dashboard">Dashboard</a><a href="/account">Account</a>`
     : `<a href="/login">Log in</a><a class="btn btn-sm" href="/signup">Get started</a>`
-  window.__user = user
+
+  // Custom alias is an account feature — hide the input when logged out.
+  if (!user) {
+    $('alias').style.display = 'none'
+    $('alias-hint').style.display = 'block'
+  }
+
+  // Pro button label depends on plan.
+  if (user?.plan === 'pro') {
+    $('pro-btn').textContent = "You're on Pro ✓"
+    $('pro-btn').disabled = true
+  }
 }
 
 async function create() {
   const url = $('url').value.trim()
   if (!url) return
-  // Logged out: stash the URL and send them to sign up, then we make it for them.
-  if (!window.__user) {
-    localStorage.setItem(PENDING, JSON.stringify({ url, alias: $('alias').value.trim() }))
-    window.location.href = '/signup'
-    return
-  }
   $('go').disabled = true
   $('go').textContent = 'Working...'
   try {
+    const body = { url }
+    if (user) {
+      const alias = $('alias').value.trim()
+      if (alias) body.alias = alias
+    }
     const res = await fetch('/api/links', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, alias: $('alias').value.trim() || undefined }),
+      body: JSON.stringify(body),
     })
     const data = await res.json()
     if (!res.ok) {
+      if (data.needsUpgrade) return upgrade()
       alert(data.error || 'Could not shorten that')
       return
     }
@@ -42,8 +51,10 @@ async function create() {
     link.textContent = data.shortUrl.replace(/^https?:\/\//, '')
     link.href = data.shortUrl
     $('result').classList.add('show')
+    // Nudge anonymous users to sign up to track clicks.
+    if (!user) $('nudge').style.display = 'block'
     $('url').value = ''
-    $('alias').value = ''
+    if (user) $('alias').value = ''
   } catch {
     alert('Network error. Try again.')
   } finally {
@@ -52,13 +63,38 @@ async function create() {
   }
 }
 
+// Start (or prompt for) a Pro subscription.
+async function upgrade() {
+  if (!user) {
+    window.location.href = '/signup'
+    return
+  }
+  $('pro-btn').disabled = true
+  $('pro-btn').textContent = 'Loading...'
+  try {
+    const res = await fetch('/api/billing/checkout', { method: 'POST' })
+    const data = await res.json()
+    if (data.url) {
+      window.location.href = data.url
+      return
+    }
+    alert(data.error || 'Billing is not available yet.')
+  } catch {
+    alert('Could not start checkout.')
+  } finally {
+    $('pro-btn').disabled = false
+    $('pro-btn').textContent = 'Upgrade to Pro'
+  }
+}
+
 $('go').addEventListener('click', create)
 $('url').addEventListener('keydown', (e) => e.key === 'Enter' && create())
 $('alias').addEventListener('keydown', (e) => e.key === 'Enter' && create())
+$('pro-btn').addEventListener('click', upgrade)
 $('result-copy').addEventListener('click', () => {
   navigator.clipboard?.writeText($('result-link').href).catch(() => {})
   $('result-copy').textContent = '✓'
   setTimeout(() => ($('result-copy').textContent = 'Copy'), 1200)
 })
 
-renderNav()
+init()

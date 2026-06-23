@@ -21,6 +21,7 @@ import {
   authUrl,
   fetchProfile,
 } from './auth.js'
+import { billingEnabled, createCheckoutUrl, parseWebhook, FREE_LINK_LIMIT } from './billing.js'
 
 dotenv.config()
 
@@ -33,6 +34,48 @@ const BASE_URL = (
 ).replace(/\/$/, '')
 
 const app = express()
+
+// Stripe webhook needs the raw, unparsed body for signature verification, so it
+// must be registered BEFORE the JSON body parser.
+app.post('/api/billing/webhook', express.raw({ type: '*/*' }), async (req, res) => {
+  let event
+  try {
+    event = parseWebhook(req.body, req.get('stripe-signature'))
+  } catch (err) {
+    return res.status(400).send(`Webhook error: ${err.message}`)
+  }
+
+  try {
+    if (event.type === 'checkout.session.completed') {
+      const s = event.data.object
+      const user = await users.getById(s.client_reference_id)
+      if (user) {
+        user.plan = 'pro'
+        user.stripeCustomerId = s.customer || user.stripeCustomerId
+        user.subscriptionId = s.subscription || user.subscriptionId
+        await users.update(user)
+      }
+    } else if (event.type === 'customer.subscription.deleted') {
+      const sub = event.data.object
+      const user = await users.getByStripe(sub.customer)
+      if (user) {
+        user.plan = 'free'
+        await users.update(user)
+      }
+    } else if (event.type === 'customer.subscription.updated') {
+      const sub = event.data.object
+      const user = await users.getByStripe(sub.customer)
+      if (user) {
+        user.plan = ['active', 'trialing'].includes(sub.status) ? 'pro' : 'free'
+        await users.update(user)
+      }
+    }
+  } catch (err) {
+    console.error('[webhook]', err.message)
+  }
+  res.json({ received: true })
+})
+
 app.use(express.json())
 app.use(cors())
 app.use(attachUser(users))
@@ -59,7 +102,14 @@ function normalize(input) {
 // Public-safe view of a user. `key: true` also exposes the API key (account page).
 function safeUser(u, { key = false } = {}) {
   if (!u) return null
-  const out = { id: u.id, email: u.email, name: u.name, provider: u.provider || 'password', createdAt: u.createdAt }
+  const out = {
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    provider: u.provider || 'password',
+    plan: u.plan || 'free',
+    createdAt: u.createdAt,
+  }
   if (key) out.apiKey = u.apiKey
   return out
 }
@@ -177,15 +227,51 @@ app.post('/api/account/rotate-key', requireUser, async (req, res) => {
   res.json({ apiKey: req.user.apiKey })
 })
 
+/* ================================ billing ================================= */
+
+app.get('/api/billing/status', (req, res) => {
+  res.json({ enabled: billingEnabled(), plan: req.user?.plan || 'free', freeLimit: FREE_LINK_LIMIT })
+})
+
+app.post('/api/billing/checkout', requireUser, async (req, res) => {
+  if (!billingEnabled()) return res.status(503).json({ error: 'Billing is not set up yet' })
+  if (req.user.plan === 'pro') return res.status(400).json({ error: "You're already on Pro" })
+  try {
+    const url = await createCheckoutUrl(req.user, BASE_URL)
+    res.json({ url })
+  } catch (err) {
+    console.error('[checkout]', err.message)
+    res.status(500).json({ error: 'Could not start checkout' })
+  }
+})
+
 /* ================================== links ================================= */
 
 app.get('/api/health', (_req, res) =>
   res.json({ ok: true, store: store.driver, providers: oauthEnabled() }),
 )
 
-app.post('/api/links', requireUser, async (req, res) => {
+// Anyone can shorten a URL (anonymous = random code only). Signed-in users also
+// get custom aliases; free accounts are capped, Pro is unlimited.
+app.post('/api/links', async (req, res) => {
   const url = normalize(req.body?.url)
   if (!url) return res.status(400).json({ error: 'Give me a URL to shorten' })
+
+  const wantsAlias = Boolean(String(req.body?.alias || '').trim())
+  if (wantsAlias && !req.user) {
+    return res.status(401).json({ error: 'Sign up for a free account to use custom aliases', needsAccount: true })
+  }
+
+  // Free-plan link cap (Pro is unlimited). Doesn't apply to anonymous links.
+  if (req.user && (req.user.plan || 'free') !== 'pro') {
+    const mine = await store.byOwner(req.user.id)
+    if (mine.length >= FREE_LINK_LIMIT) {
+      return res.status(402).json({
+        error: `Free accounts can keep ${FREE_LINK_LIMIT} links. Upgrade to Pro for unlimited.`,
+        needsUpgrade: true,
+      })
+    }
+  }
 
   let slug = String(req.body?.alias || '').trim()
   if (slug) {
@@ -204,8 +290,8 @@ app.post('/api/links', requireUser, async (req, res) => {
   const link = await store.add({
     slug,
     url,
-    owner: req.user.id,
-    source: req.body?.source || (req.get('x-api-key') ? 'api' : 'dashboard'),
+    owner: req.user ? req.user.id : null,
+    source: req.body?.source || (req.user ? (req.get('x-api-key') ? 'api' : 'dashboard') : 'anon'),
   })
   res.json(withUrl(link))
 })

@@ -27,6 +27,7 @@ const H_USERS = 'ashrt:users'
 const H_EMAIL = 'ashrt:email'
 const H_APIKEY = 'ashrt:apikey'
 const H_OAUTH = 'ashrt:oauth'
+const H_STRIPE = 'ashrt:stripe'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const LINKS_FILE = join(__dirname, '.links.json')
@@ -152,6 +153,7 @@ const userBackend = useKV ? kvHash(H_USERS) : fileHash(USERS_FILE, 'id')
 const emailIdx = useKV ? kvHash(H_EMAIL) : null
 const apiKeyIdx = useKV ? kvHash(H_APIKEY) : null
 const oauthIdx = useKV ? kvHash(H_OAUTH) : null
+const stripeIdx = useKV ? kvHash(H_STRIPE) : null
 
 const lc = (s) => String(s || '').trim().toLowerCase()
 
@@ -186,12 +188,22 @@ export const users = {
     return fileRead(USERS_FILE).find((u) => (u.oauth || []).includes(field)) || null
   },
 
+  async getByStripe(customerId) {
+    if (!customerId) return null
+    if (useKV) {
+      const id = await stripeIdx.getRaw(customerId)
+      return id ? userBackend.get(id) : null
+    }
+    return fileRead(USERS_FILE).find((u) => u.stripeCustomerId === customerId) || null
+  },
+
   // Create a user record and update all secondary indexes.
   async create(user) {
     await userBackend.put(user.id, user)
     if (useKV) {
       if (user.email) await emailIdx.put(lc(user.email), user.id)
       if (user.apiKey) await apiKeyIdx.put(user.apiKey, user.id)
+      if (user.stripeCustomerId) await stripeIdx.put(user.stripeCustomerId, user.id)
       for (const o of user.oauth || []) await oauthIdx.put(o, user.id)
     }
     return user
@@ -204,6 +216,7 @@ export const users = {
     if (useKV) {
       if (oldApiKey && oldApiKey !== user.apiKey) await apiKeyIdx.del(oldApiKey)
       if (user.apiKey) await apiKeyIdx.put(user.apiKey, user.id)
+      if (user.stripeCustomerId) await stripeIdx.put(user.stripeCustomerId, user.id)
       for (const o of user.oauth || []) await oauthIdx.put(o, user.id)
     }
     return user

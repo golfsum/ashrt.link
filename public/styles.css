@@ -323,7 +323,63 @@ a.logo { text-decoration: none; color: var(--text); }
   word-break: break-all;
 }
 
+/* signup nudge under an anonymous result */
+.nudge {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+}
+.nudge a { color: var(--accent); text-decoration: none; font-weight: 600; }
+.nudge a:hover { text-decoration: underline; }
+
+/* pricing */
+.pricing { text-align: center; padding: 48px 0 10px; }
+.pricing h2 { font-size: 26px; letter-spacing: -0.02em; }
+.pricing-sub { color: var(--muted); font-size: 14px; margin-top: 6px; }
+.plans { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 26px; max-width: 640px; margin-left: auto; margin-right: auto; }
+.plan {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 24px;
+  text-align: left;
+}
+.plan-pro { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 18px 40px -20px rgba(129,140,248,0.5); }
+.plan-badge {
+  position: absolute;
+  top: -11px;
+  left: 24px;
+  background: var(--accent);
+  color: #0b0b0f;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.plan-name { font-size: 15px; font-weight: 600; color: var(--muted); }
+.plan-price { font-size: 38px; font-weight: 800; letter-spacing: -0.02em; margin: 4px 0 16px; }
+.plan-price span { font-size: 15px; font-weight: 500; color: var(--faint); }
+.plan-feats { list-style: none; margin: 0 0 20px; padding: 0; }
+.plan-feats li { color: var(--muted); font-size: 14px; padding: 7px 0 7px 24px; position: relative; }
+.plan-feats li::before { content: '✓'; position: absolute; left: 0; color: var(--good); font-weight: 700; }
+.plan-feats b { color: var(--text); }
+
+/* plan tag on the account page */
+.plan-tag {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.plan-tag.pro { background: var(--accent); color: #0b0b0f; border-color: var(--accent); }
+
 @media (max-width: 680px) {
   .features { grid-template-columns: 1fr; }
   .hero-lg h1 { font-size: 36px; }
+  .plans { grid-template-columns: 1fr; }
 }
