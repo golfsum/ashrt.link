@@ -98,10 +98,10 @@ const RESERVED = new Set([
   'privacy', 'terms', 'links', 'link', 'analytics', 'qr', 'campaigns', 'billing', 'settings',
   'robots.txt', 'favicon.svg', 'index.html', 'styles.css',
   'app.js', 'auth.js', 'landing.js', 'account.js', 'charts.js', 'dashboard.js',
-  'shell.js', 'links.js', 'link.js', 'qr.js', 'campaigns.js', 'api.js',
+  'shell.js', 'links.js', 'link.js', 'qr.js', 'campaigns.js', 'api.js', 'settings.js',
   'login.html', 'signup.html', 'dashboard.html', 'account.html',
   'privacy.html', 'terms.html', 'links.html', 'link.html', 'qr.html',
-  'campaigns.html', 'api.html',
+  'campaigns.html', 'api.html', 'settings.html',
 ])
 
 const shortUrl = (slug) => `${BASE_URL}/${slug}`
@@ -241,6 +241,47 @@ app.post('/api/account/rotate-key', requireUser, async (req, res) => {
   req.user.apiKey = newApiKey()
   await users.update(req.user, { oldApiKey })
   res.json({ apiKey: req.user.apiKey })
+})
+
+// Update profile (currently just display name).
+app.patch('/api/account', requireUser, async (req, res) => {
+  const name = String(req.body?.name || '').trim()
+  if (name) {
+    req.user.name = name
+    await users.update(req.user)
+  }
+  res.json({ user: safeUser(req.user) })
+})
+
+/* ----------------------------- custom domains ----------------------------- */
+
+const DOMAIN_RE = /^(?!-)[a-z0-9-]+(\.[a-z0-9-]+)+$/i
+
+app.get('/api/domains', requireUser, (req, res) => {
+  res.json({ domains: req.user.domains || [] })
+})
+
+app.post('/api/domains', requireUser, async (req, res) => {
+  if (req.user.plan !== 'business') {
+    return res.status(402).json({ error: 'Custom domains are a Business feature', needsUpgrade: true })
+  }
+  const domain = String(req.body?.domain || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '')
+  if (!DOMAIN_RE.test(domain)) return res.status(400).json({ error: 'Enter a valid domain like links.yourbrand.com' })
+  req.user.domains = req.user.domains || []
+  if (req.user.domains.some((d) => d.domain === domain)) return res.status(409).json({ error: 'Domain already added' })
+  req.user.domains.push({ domain, status: 'pending', addedAt: Date.now() })
+  await users.update(req.user)
+  res.json({ domains: req.user.domains })
+})
+
+app.delete('/api/domains/:domain', requireUser, async (req, res) => {
+  req.user.domains = (req.user.domains || []).filter((d) => d.domain !== req.params.domain)
+  await users.update(req.user)
+  res.json({ ok: true })
 })
 
 /* ================================ billing ================================= */

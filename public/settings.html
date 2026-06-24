@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+    <title>Settings · ashrt.link</title>
+  </head>
+  <body data-page="settings">
+    <div class="app">
+      <aside class="sidebar" id="sidebar"></aside>
+      <main class="main">
+        <div class="main-inner">
+          <header class="topbar">
+            <div>
+              <h1>Settings</h1>
+              <p class="sub">Manage your profile and custom domains.</p>
+            </div>
+          </header>
+
+          <section class="panel-card">
+            <div class="panel-head"><h2>Profile</h2></div>
+            <div class="set-row">
+              <label>Name</label>
+              <div class="set-control"><input id="name" type="text" placeholder="Your name" /><button id="save-name" class="btn btn-sm">Save</button></div>
+            </div>
+            <div class="set-row"><label>Email</label><div id="email" class="set-static mono">—</div></div>
+            <div class="set-row"><label>Plan</label><div><span id="plan" class="plan-tag">Free</span></div></div>
+          </section>
+
+          <section class="panel-card" style="margin-top:16px">
+            <div class="panel-head">
+              <h2>Custom Domains</h2>
+              <span id="dom-plan" class="plan-tag">Business</span>
+            </div>
+            <p class="panel-sub">Serve short links from your own domain, like <span class="mono">links.yourbrand.com</span>.</p>
+
+            <div id="dom-locked" class="dom-locked" style="display:none">
+              <p class="panel-sub">Custom domains are part of the Business plan.</p>
+              <a class="btn btn-sm" href="/account">Upgrade</a>
+            </div>
+
+            <div id="dom-area" style="display:none">
+              <div class="set-control">
+                <input id="dom-input" type="text" placeholder="links.yourbrand.com" class="mono" />
+                <button id="dom-add" class="btn btn-sm">Add Domain</button>
+              </div>
+              <div id="dom-err" class="auth-err"></div>
+              <div id="dom-list"></div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <script src="/shell.js"></script>
+    <script src="/settings.js"></script>
+  </body>
+</html>

@@ -9,7 +9,7 @@ const NAV = [
   { id: 'campaigns', label: 'Campaigns', icon: '◎', href: '/campaigns' },
   { id: 'api', label: 'API', icon: '⌘', href: '/api' },
   { id: 'billing', label: 'Billing', icon: '▤', href: '/account' },
-  { id: 'settings', label: 'Settings', icon: '⚙', href: '/account' },
+  { id: 'settings', label: 'Settings', icon: '⚙', href: '/settings' },
 ]
 
 const page = document.body.dataset.page || ''
