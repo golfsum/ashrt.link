@@ -83,9 +83,9 @@ app.use(attachUser(users))
 // Names that can't be used as a custom alias (they're routes or static assets).
 const RESERVED = new Set([
   'api', 'auth', 'login', 'signup', 'dashboard', 'account', 'health',
-  'privacy', 'terms',
+  'privacy', 'terms', 'links', 'analytics', 'qr', 'campaigns', 'billing', 'settings',
   'robots.txt', 'favicon.svg', 'index.html', 'styles.css',
-  'app.js', 'auth.js', 'landing.js', 'account.js',
+  'app.js', 'auth.js', 'landing.js', 'account.js', 'charts.js', 'dashboard.js',
   'login.html', 'signup.html', 'dashboard.html', 'account.html',
   'privacy.html', 'terms.html',
 ])
@@ -295,6 +295,7 @@ app.post('/api/links', async (req, res) => {
     owner: req.user ? req.user.id : null,
     source: req.body?.source || (req.user ? (req.get('x-api-key') ? 'api' : 'dashboard') : 'anon'),
   })
+  if (req.user) await store.logActivity(req.user.id, { type: 'created', slug, at: Date.now() })
   res.json(withUrl(link))
 })
 
@@ -309,7 +310,13 @@ app.delete('/api/links/:slug', requireUser, async (req, res) => {
   if (!link) return res.json({ ok: true })
   if (link.owner !== req.user.id) return res.status(403).json({ error: 'Not your link' })
   await store.remove(req.params.slug)
+  await store.logActivity(req.user.id, { type: 'deleted', slug: req.params.slug, at: Date.now() })
   res.json({ ok: true })
+})
+
+// Aggregated analytics for the dashboard.
+app.get('/api/stats', requireUser, async (req, res) => {
+  res.json(await store.summary(req.user.id))
 })
 
 /* ------------------------ static pages + redirect ------------------------- */
@@ -317,8 +324,28 @@ app.delete('/api/links/:slug', requireUser, async (req, res) => {
 // Serves index.html at /, and clean URLs like /login -> login.html.
 app.use(express.static(join(__dirname, 'public'), { extensions: ['html'] }))
 
+// Derive analytics context from the request: device, country, referrer host,
+// and a hashed, non-identifying unique-visitor id (ip + user-agent).
+function clickContext(req) {
+  const ua = req.get('user-agent') || ''
+  const device = /tablet|ipad/i.test(ua) ? 'tablet' : /mobi|android|iphone|ipod/i.test(ua) ? 'mobile' : 'desktop'
+  const country = req.get('x-vercel-ip-country') || 'XX'
+  let refHost = 'Direct'
+  const ref = req.get('referer')
+  if (ref) {
+    try {
+      refHost = new URL(ref).hostname.replace(/^www\./, '')
+    } catch {
+      /* keep Direct */
+    }
+  }
+  const ip = (req.get('x-forwarded-for') || '').split(',')[0].trim() || req.ip || ''
+  const visitorId = crypto.createHash('sha256').update(`${ip}|${ua}`).digest('hex').slice(0, 16)
+  return { device, country, refHost, visitorId }
+}
+
 app.get('/:slug', async (req, res) => {
-  const link = await store.recordClick(req.params.slug)
+  const link = await store.recordClick(req.params.slug, clickContext(req))
   if (!link) {
     return res
       .status(404)

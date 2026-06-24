@@ -2,5 +2,6 @@ node_modules
 .env
 .links.json
 .users.json
+.activity.json
 *.log
 .vercel

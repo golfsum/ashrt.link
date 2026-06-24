@@ -11,9 +11,9 @@
     <title>Dashboard · ashrt.link</title>
   </head>
   <body>
-    <div class="wrap">
-      <header>
-        <a class="logo" href="/">
+    <div class="app">
+      <aside class="sidebar">
+        <a class="brand" href="/">
           <svg viewBox="0 0 32 32" aria-hidden="true">
             <rect width="32" height="32" rx="8" fill="#14141b" stroke="#2a2a38" />
             <path d="M13 19l6-6M12.5 14.5l-2 2a3.5 3.5 0 0 0 5 5l2-2M19.5 17.5l2-2a3.5 3.5 0 0 0-5-5l-2 2"
@@ -21,56 +21,112 @@
           </svg>
           ashrt<span class="dot">.link</span>
         </a>
-        <nav class="nav">
-          <span id="who" class="who"></span>
-          <a href="/account">Account</a>
-          <a id="logout" href="#">Log out</a>
+
+        <nav class="side-nav">
+          <a href="/dashboard" class="active"><span class="ic">▦</span> Dashboard</a>
+          <a href="#" data-soon><span class="ic">🔗</span> Links <span class="soon-badge">Soon</span></a>
+          <a href="#" data-soon><span class="ic">📈</span> Analytics <span class="soon-badge">Soon</span></a>
+          <a href="#" data-soon><span class="ic">▣</span> QR Codes <span class="soon-badge">Soon</span></a>
+          <a href="#" data-soon><span class="ic">◎</span> Campaigns <span class="soon-badge">Soon</span></a>
+          <a href="/account"><span class="ic">⌘</span> API</a>
+          <a href="/account"><span class="ic">▤</span> Billing</a>
+          <a href="/account"><span class="ic">⚙</span> Settings</a>
         </nav>
-      </header>
 
-      <section class="hero">
-        <h1>Your links</h1>
-        <p>Create a short link and track every click.</p>
-      </section>
-
-      <section class="create">
-        <div class="create-row">
-          <input id="url" type="text" placeholder="https://example.com/your/very/long/link" />
-          <input id="alias" class="alias mono" type="text" placeholder="custom (optional)" />
-          <button id="go" class="btn">Shorten</button>
+        <div class="sidebar-foot">
+          <div class="su"><div id="su-name" class="su-name">—</div><div id="su-plan" class="su-plan">Free</div></div>
+          <a id="logout" href="#" class="su-logout" title="Log out">⏻</a>
         </div>
-        <div class="hint">Leave the custom box empty and we pick a short code for you.</div>
-        <div id="result" class="result">
-          <a id="result-link" class="mono" href="#" target="_blank" rel="noreferrer"></a>
-          <button id="result-copy" class="copy">Copy</button>
+      </aside>
+
+      <main class="main">
+        <div class="main-inner">
+          <header class="topbar">
+            <div>
+              <h1 id="greeting">Welcome</h1>
+              <p class="sub">Track every click and understand where your traffic comes from.</p>
+            </div>
+            <div class="actions">
+              <button id="create-link" class="btn">Create Link</button>
+              <button id="create-qr" class="btn btn-ghost">Create QR Code</button>
+            </div>
+          </header>
+
+          <section class="cards">
+            <div class="card metric">
+              <div class="label">Total Links</div>
+              <div id="m-links" class="value">0</div>
+            </div>
+            <div class="card metric">
+              <div class="label">Total Clicks</div>
+              <div id="m-clicks" class="value">0</div>
+            </div>
+            <div class="card metric">
+              <div class="label">Unique Visitors</div>
+              <div id="m-visitors" class="value">0</div>
+            </div>
+            <div class="card metric">
+              <div class="label">Campaigns</div>
+              <div id="m-campaigns" class="value">0</div>
+            </div>
+          </section>
+
+          <section class="panel-card">
+            <div class="panel-head">
+              <h2>Clicks Over Time</h2>
+              <div class="segment" id="range">
+                <button data-days="1">Today</button>
+                <button data-days="7" class="active">7 Days</button>
+                <button data-days="30">30 Days</button>
+                <button data-days="90">90 Days</button>
+              </div>
+            </div>
+            <div id="chart-clicks" class="chart-wrap"></div>
+          </section>
+
+          <div class="grid-2">
+            <section class="panel-card">
+              <div class="panel-head"><h2>Most Clicked Links</h2><a href="#" data-soon class="head-link">View all</a></div>
+              <div id="top-links"></div>
+            </section>
+            <section class="panel-card">
+              <div class="panel-head"><h2>Recent Activity</h2></div>
+              <div id="activity"></div>
+            </section>
+          </div>
+
+          <div class="grid-3">
+            <section class="panel-card">
+              <div class="panel-head"><h2>Top Referrers</h2></div>
+              <div id="referrers"></div>
+            </section>
+            <section class="panel-card">
+              <div class="panel-head"><h2>Devices</h2></div>
+              <div id="devices"></div>
+            </section>
+            <section class="panel-card">
+              <div class="panel-head"><h2>Top Countries</h2></div>
+              <div id="countries"></div>
+            </section>
+          </div>
         </div>
-      </section>
-
-      <section class="stats">
-        <div class="stat"><div id="stat-links" class="n">0</div><div class="l">Links</div></div>
-        <div class="stat"><div id="stat-clicks" class="n">0</div><div class="l">Total clicks</div></div>
-        <div class="stat"><div id="stat-top" class="n mono">-</div><div class="l">Busiest link</div></div>
-      </section>
-
-      <section class="links">
-        <div class="head">
-          <span>Short link</span>
-          <span>Destination</span>
-          <span>Clicks</span>
-          <span>Created</span>
-          <span>Last 7 days</span>
-          <span></span>
-        </div>
-        <div id="rows"></div>
-        <div id="empty" class="empty">No links yet. Make your first one above.</div>
-      </section>
-
-      <footer>
-        <span>© 2026 ashrt.link</span>
-        <span class="foot-links"><a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></span>
-      </footer>
+      </main>
     </div>
 
-    <script src="/app.js"></script>
+    <div id="modal" class="modal-backdrop">
+      <div class="modal">
+        <h3>Create a link</h3>
+        <input id="m-url" type="text" placeholder="https://example.com/your/long/link" />
+        <input id="m-alias" class="mono" type="text" placeholder="custom name (optional)" />
+        <div id="m-err" class="auth-err"></div>
+        <div class="modal-actions">
+          <button id="m-cancel" class="btn btn-ghost">Cancel</button>
+          <button id="m-create" class="btn">Create</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/charts.js"></script>
+    <script src="/dashboard.js"></script>
   </body>
 </html>

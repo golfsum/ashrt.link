@@ -32,6 +32,7 @@ const H_STRIPE = 'ashrt:stripe'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const LINKS_FILE = join(__dirname, '.links.json')
 const USERS_FILE = join(__dirname, '.users.json')
+const ACT_FILE = join(__dirname, '.activity.json')
 
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -134,17 +135,139 @@ export const store = {
   async remove(slug) {
     await linkBackend.del(slug)
   },
-  async recordClick(slug) {
+  // Record a click and roll up the analytics dimensions we capture at redirect
+  // time: device, country, referrer host, and a hashed unique-visitor id.
+  async recordClick(slug, ctx = {}) {
     const link = await linkBackend.get(slug)
     if (!link) return null
-    link.clicks = (link.clicks || 0) + 1
+    const prev = link.clicks || 0
+    link.clicks = prev + 1
     link.lastClickAt = Date.now()
     link.daily = link.daily || {}
-    const d = today()
-    link.daily[d] = (link.daily[d] || 0) + 1
+    link.daily[ctx.day || today()] = (link.daily[ctx.day || today()] || 0) + 1
+
+    if (ctx.device) {
+      link.devices = link.devices || {}
+      link.devices[ctx.device] = (link.devices[ctx.device] || 0) + 1
+    }
+    if (ctx.country) {
+      link.countries = link.countries || {}
+      link.countries[ctx.country] = (link.countries[ctx.country] || 0) + 1
+    }
+    if (ctx.refHost) {
+      link.referrers = link.referrers || {}
+      link.referrers[ctx.refHost] = (link.referrers[ctx.refHost] || 0) + 1
+    }
+    if (ctx.visitorId) {
+      if (useKV) {
+        await redis(['PFADD', `ashrt:uv:${slug}`, ctx.visitorId])
+        if (link.owner) await redis(['PFADD', `ashrt:uvo:${link.owner}`, ctx.visitorId])
+      } else {
+        link.uv = link.uv || []
+        if (!link.uv.includes(ctx.visitorId)) link.uv.push(ctx.visitorId)
+      }
+    }
     await linkBackend.put(slug, link)
+
+    // Note click milestones in the owner's activity feed.
+    if (link.owner) {
+      for (const m of [100, 1000, 10000, 100000]) {
+        if (prev < m && link.clicks >= m) {
+          await this.logActivity(link.owner, { type: 'milestone', slug, value: m, at: Date.now() })
+        }
+      }
+    }
     return link
   },
+
+  // Approximate unique visitors for one link (HLL on KV, a set in file mode).
+  async uniquesForLink(slug) {
+    if (useKV) return Number(await redis(['PFCOUNT', `ashrt:uv:${slug}`])) || 0
+    const link = await linkBackend.get(slug)
+    return link?.uv?.length || 0
+  },
+
+  // Aggregated analytics for a user's dashboard.
+  async summary(owner) {
+    const links = await this.byOwner(owner)
+    const series = {}
+    const devices = {}
+    const countries = {}
+    const referrers = {}
+    let totalClicks = 0
+    for (const l of links) {
+      totalClicks += l.clicks || 0
+      for (const [k, n] of Object.entries(l.daily || {})) series[k] = (series[k] || 0) + n
+      for (const [k, n] of Object.entries(l.devices || {})) devices[k] = (devices[k] || 0) + n
+      for (const [k, n] of Object.entries(l.countries || {})) countries[k] = (countries[k] || 0) + n
+      for (const [k, n] of Object.entries(l.referrers || {})) referrers[k] = (referrers[k] || 0) + n
+    }
+
+    let uniqueVisitors = 0
+    if (useKV) {
+      uniqueVisitors = Number(await redis(['PFCOUNT', `ashrt:uvo:${owner}`])) || 0
+    } else {
+      const set = new Set()
+      for (const l of links) for (const id of l.uv || []) set.add(id)
+      uniqueVisitors = set.size
+    }
+
+    const top = [...links].sort((a, b) => (b.clicks || 0) - (a.clicks || 0)).slice(0, 5)
+    const topLinks = []
+    for (const l of top) {
+      topLinks.push({
+        slug: l.slug,
+        url: l.url,
+        clicks: l.clicks || 0,
+        visitors: await this.uniquesForLink(l.slug),
+        daily: l.daily || {},
+      })
+    }
+
+    return {
+      totalLinks: links.length,
+      totalClicks,
+      uniqueVisitors,
+      series,
+      devices,
+      countries,
+      referrers,
+      topLinks,
+      activity: await this.activity(owner),
+    }
+  },
+
+  // Owner activity feed (newest first), capped at 50 entries.
+  async logActivity(owner, event) {
+    if (!owner) return
+    if (useKV) {
+      await redis(['LPUSH', `ashrt:act:${owner}`, JSON.stringify(event)])
+      await redis(['LTRIM', `ashrt:act:${owner}`, 0, 49])
+    } else {
+      const all = actRead()
+      all[owner] = [event, ...(all[owner] || [])].slice(0, 50)
+      actWrite(all)
+    }
+  },
+  async activity(owner) {
+    if (useKV) {
+      const raw = (await redis(['LRANGE', `ashrt:act:${owner}`, 0, 49])) || []
+      return raw.map((s) => JSON.parse(s))
+    }
+    return actRead()[owner] || []
+  },
+}
+
+function actRead() {
+  if (!existsSync(ACT_FILE)) return {}
+  try {
+    return JSON.parse(readFileSync(ACT_FILE, 'utf8'))
+  } catch {
+    return {}
+  }
+}
+function actWrite(obj) {
+  writeFileSync(ACT_FILE, JSON.stringify(obj, null, 2))
 }
 
 /* ------------------------------ user storage ------------------------------ */
