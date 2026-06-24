@@ -22,12 +22,18 @@
             </div>
           </header>
 
-          <div class="panel-card pro-banner">
+          <div id="pro-banner" class="panel-card pro-banner">
             <div>
               <b>Branded QR codes</b>
-              <p class="panel-sub" style="margin:4px 0 0">Add your logo, brand colors, and frame styles.</p>
+              <p class="panel-sub" style="margin:4px 0 0">Color your QR codes to match your brand. Logos and frames coming soon.</p>
             </div>
-            <span class="plan-tag">Pro · soon</span>
+            <a class="btn btn-sm" href="/account">Upgrade to Pro</a>
+          </div>
+
+          <div id="brand-bar" class="brand-bar" style="display:none">
+            <label for="brand-color">Brand color</label>
+            <input id="brand-color" type="color" value="#0A0A0A" />
+            <button id="brand-reset" class="btn btn-ghost btn-sm">Reset</button>
           </div>
 
           <div id="grid" class="qr-grid"></div>

@@ -21,7 +21,7 @@ import {
   authUrl,
   fetchProfile,
 } from './auth.js'
-import { billingEnabled, planAvailable, createCheckoutUrl, parseWebhook, FREE_LINK_LIMIT, PAID_PLANS } from './billing.js'
+import { billingEnabled, planAvailable, createCheckoutUrl, createPortalUrl, parseWebhook, FREE_LINK_LIMIT, PAID_PLANS } from './billing.js'
 import QRCode from 'qrcode'
 
 dotenv.config()
@@ -107,10 +107,10 @@ const RESERVED = new Set([
   'privacy', 'terms', 'links', 'link', 'analytics', 'qr', 'campaigns', 'billing', 'settings', 'developers',
   'robots.txt', 'favicon.svg', 'index.html', 'styles.css',
   'app.js', 'auth.js', 'landing.js', 'account.js', 'charts.js', 'dashboard.js',
-  'shell.js', 'links.js', 'link.js', 'qr.js', 'campaigns.js', 'developers.js', 'settings.js',
+  'shell.js', 'links.js', 'link.js', 'qr.js', 'campaigns.js', 'developers.js', 'settings.js', 'analytics.js',
   'login.html', 'signup.html', 'dashboard.html', 'account.html',
   'privacy.html', 'terms.html', 'links.html', 'link.html', 'qr.html',
-  'campaigns.html', 'developers.html', 'settings.html',
+  'campaigns.html', 'developers.html', 'settings.html', 'analytics.html',
 ])
 
 const shortUrl = (slug) => `${BASE_URL}/${slug}`
@@ -317,6 +317,20 @@ app.post('/api/billing/checkout', requireUser, async (req, res) => {
   }
 })
 
+// Open the Stripe customer portal for an existing subscriber.
+app.post('/api/billing/portal', requireUser, async (req, res) => {
+  if (!billingEnabled() || !req.user.stripeCustomerId) {
+    return res.status(400).json({ error: 'No subscription to manage' })
+  }
+  try {
+    const url = await createPortalUrl(req.user.stripeCustomerId, BASE_URL)
+    res.json({ url })
+  } catch (err) {
+    console.error('[portal]', err.message)
+    res.status(500).json({ error: 'Could not open billing portal' })
+  }
+})
+
 /* ================================ campaigns =============================== */
 
 app.get('/api/campaigns', requireUser, async (req, res) => {
@@ -459,7 +473,10 @@ app.get('/api/links/:slug/stats', requireUser, async (req, res) => {
 app.get('/api/qr', requireUser, async (req, res) => {
   const data = String(req.query.data || '')
   if (!data) return res.status(400).send('missing data')
-  const opts = { margin: 1, color: { dark: '#0A0A0A', light: '#FFFFFF' } }
+  // Brand color is a paid-plan feature; free users always get the default.
+  const wantColor = String(req.query.color || '').replace('#', '')
+  const dark = isPaid(req.user) && /^[0-9a-fA-F]{6}$/.test(wantColor) ? `#${wantColor}` : '#0A0A0A'
+  const opts = { margin: 1, color: { dark, light: '#FFFFFF' } }
   const name = String(req.query.name || 'qr').replace(/[^a-zA-Z0-9_-]/g, '')
   try {
     if (req.query.format === 'png') {

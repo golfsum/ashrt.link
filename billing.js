@@ -46,6 +46,16 @@ export async function createCheckoutUrl(user, baseUrl, plan = 'pro') {
   return session.url
 }
 
+// Open the Stripe customer portal so a subscriber can manage/cancel their plan.
+export async function createPortalUrl(customerId, baseUrl) {
+  if (!stripe) throw new Error('Billing is not configured')
+  const session = await stripe.billingPortal.sessions.create({
+    customer: customerId,
+    return_url: `${baseUrl}/account`,
+  })
+  return session.url
+}
+
 // Verify and parse an incoming webhook. Throws if the signature is invalid.
 export function parseWebhook(rawBody, signature) {
   if (!stripe || !WEBHOOK_SECRET) throw new Error('Webhook not configured')

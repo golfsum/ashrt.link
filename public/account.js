@@ -36,7 +36,16 @@ function renderPlans(billing) {
   }
   if (plan !== 'free') {
     note.textContent = `You're on the ${cap(plan)} plan. Thanks for your support!`
-    wrap.innerHTML = ''
+    if (billing.enabled) {
+      wrap.innerHTML = `<div class="po-row">
+        <div><div class="po-name">Manage subscription</div>
+          <div class="po-blurb">Update your payment method or cancel anytime.</div></div>
+        <button class="btn btn-ghost" id="portal">Manage</button>
+      </div>`
+      $('portal').onclick = openPortal
+    } else {
+      wrap.innerHTML = ''
+    }
     return
   }
 
@@ -54,6 +63,23 @@ function renderPlans(billing) {
     .join('')
 
   wrap.querySelectorAll('[data-plan]').forEach((b) => (b.onclick = () => checkout(b.dataset.plan, b)))
+}
+
+async function openPortal() {
+  const btn = $('portal')
+  btn.disabled = true
+  btn.textContent = 'Loading...'
+  try {
+    const res = await fetch('/api/billing/portal', { method: 'POST' })
+    const data = await res.json()
+    if (data.url) return (window.location.href = data.url)
+    window.toast(data.error || 'Could not open billing portal')
+  } catch {
+    window.toast('Could not open billing portal')
+  } finally {
+    btn.disabled = false
+    btn.textContent = 'Manage'
+  }
 }
 
 async function checkout(p, btn) {

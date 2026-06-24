@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+    <title>Analytics · ashrt.link</title>
+  </head>
+  <body data-page="analytics">
+    <div class="app">
+      <aside class="sidebar" id="sidebar"></aside>
+      <main class="main">
+        <div class="main-inner">
+          <header class="topbar">
+            <div>
+              <h1>Analytics</h1>
+              <p class="sub">Clicks, visitors, and traffic sources across all your links.</p>
+            </div>
+            <div class="actions">
+              <div class="segment" id="range">
+                <button data-days="7" class="active">7 Days</button>
+                <button data-days="30">30 Days</button>
+                <button data-days="90">90 Days</button>
+              </div>
+            </div>
+          </header>
+
+          <section class="cards">
+            <div class="card metric"><div class="label">Clicks (range)</div><div id="m-clicks" class="value">0</div></div>
+            <div class="card metric"><div class="label">Total Clicks</div><div id="m-total" class="value">0</div></div>
+            <div class="card metric"><div class="label">Unique Visitors</div><div id="m-visitors" class="value">0</div></div>
+            <div class="card metric"><div class="label">Avg / Day</div><div id="m-avg" class="value">0</div></div>
+          </section>
+
+          <section class="panel-card">
+            <div class="panel-head"><h2>Clicks Over Time</h2></div>
+            <div id="chart-clicks" class="chart-wrap"></div>
+          </section>
+
+          <div class="grid-3">
+            <section class="panel-card"><div class="panel-head"><h2>Traffic Sources</h2></div><div id="referrers"></div></section>
+            <section class="panel-card"><div class="panel-head"><h2>Devices</h2></div><div id="devices"></div></section>
+            <section class="panel-card"><div class="panel-head"><h2>Top Countries</h2></div><div id="countries"></div></section>
+          </div>
+
+          <section class="panel-card" style="margin-top:16px">
+            <div class="panel-head"><h2>Top Links</h2><a href="/links" class="head-link">View all</a></div>
+            <div id="top-links"></div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <script src="/shell.js"></script>
+    <script src="/charts.js"></script>
+    <script src="/analytics.js"></script>
+  </body>
+</html>

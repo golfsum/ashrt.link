@@ -4,7 +4,7 @@
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: '▦', href: '/dashboard' },
   { id: 'links', label: 'Links', icon: '🔗', href: '/links' },
-  { id: 'analytics', label: 'Analytics', icon: '📈', soon: true },
+  { id: 'analytics', label: 'Analytics', icon: '📈', href: '/analytics' },
   { id: 'qr', label: 'QR Codes', icon: '▣', href: '/qr' },
   { id: 'campaigns', label: 'Campaigns', icon: '◎', href: '/campaigns' },
   { id: 'api', label: 'API', icon: '⌘', href: '/developers' },
