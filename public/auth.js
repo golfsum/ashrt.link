@@ -2,7 +2,7 @@ const $ = (id) => document.getElementById(id)
 const isSignup = location.pathname.replace(/\/$/, '').endsWith('/signup')
 
 // If already signed in, skip straight to the dashboard.
-fetch('/auth/me').then((r) => {
+fetch('/auth/me', { cache: 'no-store' }).then((r) => {
   if (r.ok) window.location.href = '/dashboard'
 })
 

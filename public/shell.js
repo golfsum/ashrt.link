@@ -69,7 +69,7 @@ window.toast = function (msg) {
 window.shellReady = (async () => {
   let user = null
   try {
-    const res = await fetch('/auth/me')
+    const res = await fetch('/auth/me', { cache: 'no-store' })
     if (res.ok) user = (await res.json()).user
   } catch {}
   if (!user) {

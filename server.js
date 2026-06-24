@@ -80,6 +80,15 @@ app.post('/api/billing/webhook', express.raw({ type: '*/*' }), async (req, res) 
 
 app.use(express.json())
 app.use(cors())
+
+// Never cache auth/API responses — stale auth state causes login/redirect loops.
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/') || req.path.startsWith('/auth/')) {
+    res.set('Cache-Control', 'no-store')
+  }
+  next()
+})
+
 app.use(attachUser(users))
 
 // Count programmatic (API-key) requests to /api/* for the usage graph.
