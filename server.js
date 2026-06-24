@@ -104,13 +104,13 @@ const isPaid = (u) => PAID_PLANS.includes(u?.plan)
 // Names that can't be used as a custom alias (they're routes or static assets).
 const RESERVED = new Set([
   'api', 'auth', 'login', 'signup', 'dashboard', 'account', 'health',
-  'privacy', 'terms', 'links', 'link', 'analytics', 'qr', 'campaigns', 'billing', 'settings',
+  'privacy', 'terms', 'links', 'link', 'analytics', 'qr', 'campaigns', 'billing', 'settings', 'developers',
   'robots.txt', 'favicon.svg', 'index.html', 'styles.css',
   'app.js', 'auth.js', 'landing.js', 'account.js', 'charts.js', 'dashboard.js',
-  'shell.js', 'links.js', 'link.js', 'qr.js', 'campaigns.js', 'api.js', 'settings.js',
+  'shell.js', 'links.js', 'link.js', 'qr.js', 'campaigns.js', 'developers.js', 'settings.js',
   'login.html', 'signup.html', 'dashboard.html', 'account.html',
   'privacy.html', 'terms.html', 'links.html', 'link.html', 'qr.html',
-  'campaigns.html', 'api.html', 'settings.html',
+  'campaigns.html', 'developers.html', 'settings.html',
 ])
 
 const shortUrl = (slug) => `${BASE_URL}/${slug}`
