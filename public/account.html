@@ -8,81 +8,37 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/styles.css" />
-    <title>Account · ashrt.link</title>
+    <title>Billing · ashrt.link</title>
   </head>
-  <body>
-    <div class="wrap">
-      <header>
-        <a class="logo" href="/">
-          <svg viewBox="0 0 32 32" aria-hidden="true">
-            <rect width="32" height="32" rx="8" fill="#14141b" stroke="#2a2a38" />
-            <path d="M13 19l6-6M12.5 14.5l-2 2a3.5 3.5 0 0 0 5 5l2-2M19.5 17.5l2-2a3.5 3.5 0 0 0-5-5l-2 2"
-              fill="none" stroke="#818cf8" stroke-width="2" stroke-linecap="round" />
-          </svg>
-          ashrt<span class="dot">.link</span>
-        </a>
-        <nav class="nav">
-          <a href="/dashboard">Dashboard</a>
-          <a id="logout" href="#">Log out</a>
-        </nav>
-      </header>
+  <body data-page="billing">
+    <div class="app">
+      <aside class="sidebar" id="sidebar"></aside>
+      <main class="main">
+        <div class="main-inner">
+          <header class="topbar">
+            <div>
+              <h1>Billing</h1>
+              <p class="sub">Your plan and account details.</p>
+            </div>
+          </header>
 
-      <section class="hero">
-        <h1>Account</h1>
-        <p>Your profile and API key.</p>
-      </section>
+          <section class="panel-card">
+            <div class="panel-head"><h2>Account</h2></div>
+            <div class="set-row"><label>Email</label><div id="email" class="set-static mono">—</div></div>
+            <div class="set-row"><label>Sign-in method</label><div id="provider" class="set-static">—</div></div>
+            <div class="set-row"><label>Plan</label><div><span id="plan" class="plan-tag">Free</span></div></div>
+          </section>
 
-      <section class="panel">
-        <div class="field">
-          <label>Email</label>
-          <div id="email" class="field-val mono">-</div>
+          <section class="panel-card" style="margin-top:16px">
+            <div class="panel-head"><h2>Plan &amp; billing</h2></div>
+            <p id="billing-note" class="panel-sub"></p>
+            <div id="plan-options" class="plan-options"></div>
+          </section>
         </div>
-        <div class="field">
-          <label>Sign-in method</label>
-          <div id="provider" class="field-val">-</div>
-        </div>
-        <div class="field">
-          <label>Plan</label>
-          <div class="field-val"><span id="plan" class="plan-tag">Free</span></div>
-        </div>
-      </section>
-
-      <section class="panel" id="upgrade-panel" style="display:none">
-        <h2>Upgrade to Pro</h2>
-        <p class="panel-sub">Get unlimited links for $5 a month.</p>
-        <button id="upgrade" class="btn">Upgrade to Pro</button>
-      </section>
-
-      <section class="panel">
-        <h2>API key</h2>
-        <p class="panel-sub">
-          Use this key to create links from your own code. Send it in the
-          <span class="mono">x-api-key</span> header. Keep it private. Anyone who has it can make links on your account.
-        </p>
-        <div class="key-row">
-          <input id="apikey" class="mono" type="text" readonly value="••••••••••••••••" />
-          <button id="reveal" class="copy">Show</button>
-          <button id="copykey" class="copy">Copy</button>
-          <button id="rotate" class="copy danger-btn">Rotate</button>
-        </div>
-      </section>
-
-      <section class="panel">
-        <h2>Using the API</h2>
-        <p class="panel-sub">
-          You can make links straight from your own code. Links you create this way show up in your
-          dashboard with their clicks, same as the ones you make here.
-        </p>
-        <pre id="snippet" class="snippet mono"></pre>
-        <p class="panel-sub">Base URL: <span id="api-base" class="mono">-</span></p>
-      </section>
-
-      <footer>
-        <span>© 2026 ashrt.link</span>
-        <span class="foot-links"><a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></span>
-      </footer>
+      </main>
     </div>
 
+    <script src="/shell.js"></script>
     <script src="/account.js"></script>
   </body>
 </html>

@@ -649,6 +649,13 @@ footer { display: flex; flex-direction: column; gap: 6px; }
 .dom-hint { color: var(--faint); font-size: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
 .dom-hint b { color: var(--muted); }
 
+/* ----- billing plan options ----- */
+.po-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 0; border-top: 1px solid var(--border); }
+.po-row:first-child { border-top: 0; }
+.po-name { font-size: 15px; font-weight: 600; }
+.po-price { color: var(--accent); font-weight: 600; font-size: 13px; margin-left: 4px; }
+.po-blurb { color: var(--muted); font-size: 13px; margin-top: 3px; }
+
 /* ----- marketing: feature grid, mockup, social proof ----- */
 .hero-cta { display: flex; gap: 12px; margin-top: 22px; flex-wrap: wrap; }
 .features-4 { grid-template-columns: repeat(4, 1fr); }
