@@ -10,34 +10,9 @@
     <link rel="stylesheet" href="/styles.css" />
     <title>Dashboard · ashrt.link</title>
   </head>
-  <body>
+  <body data-page="dashboard">
     <div class="app">
-      <aside class="sidebar">
-        <a class="brand" href="/">
-          <svg viewBox="0 0 32 32" aria-hidden="true">
-            <rect width="32" height="32" rx="8" fill="#14141b" stroke="#2a2a38" />
-            <path d="M13 19l6-6M12.5 14.5l-2 2a3.5 3.5 0 0 0 5 5l2-2M19.5 17.5l2-2a3.5 3.5 0 0 0-5-5l-2 2"
-              fill="none" stroke="#818cf8" stroke-width="2" stroke-linecap="round" />
-          </svg>
-          ashrt<span class="dot">.link</span>
-        </a>
-
-        <nav class="side-nav">
-          <a href="/dashboard" class="active"><span class="ic">▦</span> Dashboard</a>
-          <a href="#" data-soon><span class="ic">🔗</span> Links <span class="soon-badge">Soon</span></a>
-          <a href="#" data-soon><span class="ic">📈</span> Analytics <span class="soon-badge">Soon</span></a>
-          <a href="#" data-soon><span class="ic">▣</span> QR Codes <span class="soon-badge">Soon</span></a>
-          <a href="#" data-soon><span class="ic">◎</span> Campaigns <span class="soon-badge">Soon</span></a>
-          <a href="/account"><span class="ic">⌘</span> API</a>
-          <a href="/account"><span class="ic">▤</span> Billing</a>
-          <a href="/account"><span class="ic">⚙</span> Settings</a>
-        </nav>
-
-        <div class="sidebar-foot">
-          <div class="su"><div id="su-name" class="su-name">—</div><div id="su-plan" class="su-plan">Free</div></div>
-          <a id="logout" href="#" class="su-logout" title="Log out">⏻</a>
-        </div>
-      </aside>
+      <aside class="sidebar" id="sidebar"></aside>
 
       <main class="main">
         <div class="main-inner">
@@ -126,6 +101,7 @@
       </div>
     </div>
 
+    <script src="/shell.js"></script>
     <script src="/charts.js"></script>
     <script src="/dashboard.js"></script>
   </body>

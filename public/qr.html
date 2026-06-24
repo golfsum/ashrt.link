@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+    <title>QR Codes · ashrt.link</title>
+  </head>
+  <body data-page="qr">
+    <div class="app">
+      <aside class="sidebar" id="sidebar"></aside>
+      <main class="main">
+        <div class="main-inner">
+          <header class="topbar">
+            <div>
+              <h1>QR Codes</h1>
+              <p class="sub">Every link gets a QR code. Download as PNG or SVG, or print it.</p>
+            </div>
+          </header>
+
+          <div class="panel-card pro-banner">
+            <div>
+              <b>Branded QR codes</b>
+              <p class="panel-sub" style="margin:4px 0 0">Add your logo, brand colors, and frame styles.</p>
+            </div>
+            <span class="plan-tag">Pro · soon</span>
+          </div>
+
+          <div id="grid" class="qr-grid"></div>
+          <div id="empty" class="chart-empty" style="display:none">No links yet. Create one to get its QR code.</div>
+        </div>
+      </main>
+    </div>
+
+    <script src="/shell.js"></script>
+    <script src="/qr.js"></script>
+  </body>
+</html>

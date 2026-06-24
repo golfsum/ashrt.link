@@ -22,6 +22,7 @@ import {
   fetchProfile,
 } from './auth.js'
 import { billingEnabled, createCheckoutUrl, parseWebhook, FREE_LINK_LIMIT } from './billing.js'
+import QRCode from 'qrcode'
 
 dotenv.config()
 
@@ -83,11 +84,12 @@ app.use(attachUser(users))
 // Names that can't be used as a custom alias (they're routes or static assets).
 const RESERVED = new Set([
   'api', 'auth', 'login', 'signup', 'dashboard', 'account', 'health',
-  'privacy', 'terms', 'links', 'analytics', 'qr', 'campaigns', 'billing', 'settings',
+  'privacy', 'terms', 'links', 'link', 'analytics', 'qr', 'campaigns', 'billing', 'settings',
   'robots.txt', 'favicon.svg', 'index.html', 'styles.css',
   'app.js', 'auth.js', 'landing.js', 'account.js', 'charts.js', 'dashboard.js',
+  'shell.js', 'links.js', 'link.js', 'qr.js',
   'login.html', 'signup.html', 'dashboard.html', 'account.html',
-  'privacy.html', 'terms.html',
+  'privacy.html', 'terms.html', 'links.html', 'link.html', 'qr.html',
 ])
 
 const shortUrl = (slug) => `${BASE_URL}/${slug}`
@@ -302,7 +304,53 @@ app.post('/api/links', async (req, res) => {
 app.get('/api/links', requireUser, async (req, res) => {
   const links = await store.byOwner(req.user.id)
   const totalClicks = links.reduce((s, l) => s + (l.clicks || 0), 0)
-  res.json({ totalLinks: links.length, totalClicks, links: links.map(withUrl) })
+  const enriched = []
+  for (const l of links) {
+    enriched.push({ ...withUrl(l), visitors: await store.uniquesForLink(l.slug), status: 'active' })
+  }
+  res.json({ totalLinks: links.length, totalClicks, links: enriched })
+})
+
+// Edit a link's destination.
+app.patch('/api/links/:slug', requireUser, async (req, res) => {
+  const link = await store.get(req.params.slug)
+  if (!link) return res.status(404).json({ error: 'Link not found' })
+  if (link.owner !== req.user.id) return res.status(403).json({ error: 'Not your link' })
+  const url = normalize(req.body?.url)
+  if (!url) return res.status(400).json({ error: 'Give me a URL' })
+  link.url = url
+  await store.add(link) // add() upserts by slug
+  await store.logActivity(req.user.id, { type: 'edited', slug: link.slug, at: Date.now() })
+  res.json(withUrl(link))
+})
+
+// Per-link analytics for its detail page.
+app.get('/api/links/:slug/stats', requireUser, async (req, res) => {
+  const link = await store.get(req.params.slug)
+  if (!link) return res.status(404).json({ error: 'Link not found' })
+  if (link.owner !== req.user.id) return res.status(403).json({ error: 'Not your link' })
+  const summary = await store.linkSummary(req.params.slug)
+  res.json({ ...summary, shortUrl: shortUrl(req.params.slug) })
+})
+
+// QR code for any text/URL (PNG or SVG). ?download=1 forces a file download.
+app.get('/api/qr', requireUser, async (req, res) => {
+  const data = String(req.query.data || '')
+  if (!data) return res.status(400).send('missing data')
+  const opts = { margin: 1, color: { dark: '#0A0A0A', light: '#FFFFFF' } }
+  const name = String(req.query.name || 'qr').replace(/[^a-zA-Z0-9_-]/g, '')
+  try {
+    if (req.query.format === 'png') {
+      const buf = await QRCode.toBuffer(data, { ...opts, type: 'png', width: 512 })
+      if (req.query.download) res.set('Content-Disposition', `attachment; filename="${name}.png"`)
+      return res.type('image/png').send(buf)
+    }
+    const svg = await QRCode.toString(data, { ...opts, type: 'svg' })
+    if (req.query.download) res.set('Content-Disposition', `attachment; filename="${name}.svg"`)
+    res.type('image/svg+xml').send(svg)
+  } catch {
+    res.status(500).send('qr error')
+  }
 })
 
 app.delete('/api/links/:slug', requireUser, async (req, res) => {

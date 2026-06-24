@@ -10,16 +10,6 @@ function greet(name) {
   return `Good ${part}${name ? ', ' + name : ''}`
 }
 
-async function requireSession() {
-  try {
-    const res = await fetch('/auth/me')
-    if (!res.ok) return (window.location.href = '/login'), null
-    return (await res.json()).user
-  } catch {
-    return (window.location.href = '/login'), null
-  }
-}
-
 // Build a continuous daily series for the last `days`, filling gaps with 0.
 function seriesForRange(series, days) {
   const out = []
@@ -159,18 +149,6 @@ async function createLink() {
   }
 }
 
-function toast(msg) {
-  const t = document.createElement('div')
-  t.className = 'toast'
-  t.textContent = msg
-  document.body.appendChild(t)
-  setTimeout(() => t.classList.add('show'), 10)
-  setTimeout(() => {
-    t.classList.remove('show')
-    setTimeout(() => t.remove(), 300)
-  }, 1800)
-}
-
 /* --------------------------------- wire up -------------------------------- */
 
 $('range').addEventListener('click', (e) => {
@@ -182,33 +160,17 @@ $('range').addEventListener('click', (e) => {
 })
 
 $('create-link').addEventListener('click', openModal)
-$('create-qr').addEventListener('click', () => toast('QR codes are coming soon'))
+$('create-qr').addEventListener('click', () => (window.location.href = '/qr'))
 $('m-cancel').addEventListener('click', closeModal)
 $('m-create').addEventListener('click', createLink)
 $('m-url').addEventListener('keydown', (e) => e.key === 'Enter' && createLink())
 $('m-alias').addEventListener('keydown', (e) => e.key === 'Enter' && createLink())
 $('modal').addEventListener('click', (e) => e.target === $('modal') && closeModal())
 
-document.querySelectorAll('[data-soon]').forEach((a) =>
-  a.addEventListener('click', (e) => {
-    e.preventDefault()
-    toast('That section is coming soon')
-  }),
-)
-
-$('logout').addEventListener('click', async (e) => {
-  e.preventDefault()
-  await fetch('/auth/logout', { method: 'POST' })
-  window.location.href = '/'
-})
-
 ;(async () => {
-  const user = await requireSession()
+  const user = await window.shellReady
   if (!user) return
   const name = (user.name || user.email || '').split('@')[0]
   $('greeting').textContent = greet(name)
-  $('su-name').textContent = user.email
-  $('su-plan').textContent = user.plan === 'pro' ? 'Pro' : 'Free'
-  if (user.plan === 'pro') $('su-plan').classList.add('pro')
   await loadStats()
 })()

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+    <title>Links · ashrt.link</title>
+  </head>
+  <body data-page="links">
+    <div class="app">
+      <aside class="sidebar" id="sidebar"></aside>
+      <main class="main">
+        <div class="main-inner">
+          <header class="topbar">
+            <div>
+              <h1>Links</h1>
+              <p class="sub">Create, manage, and track all your short links.</p>
+            </div>
+            <div class="actions">
+              <button id="create-link" class="btn">Create Link</button>
+            </div>
+          </header>
+
+          <div class="toolbar">
+            <input id="search" class="toolbar-search" type="text" placeholder="Search links or destinations..." />
+            <select id="sort" class="toolbar-select">
+              <option value="new">Newest</option>
+              <option value="clicks">Most clicks</option>
+              <option value="visitors">Most visitors</option>
+            </select>
+          </div>
+
+          <div class="panel-card table-card">
+            <div class="ltable">
+              <div class="ltable-head">
+                <span>Short URL</span>
+                <span>Destination</span>
+                <span class="num">Clicks</span>
+                <span class="num">Visitors</span>
+                <span>Created</span>
+                <span>Status</span>
+                <span></span>
+              </div>
+              <div id="rows"></div>
+              <div id="empty" class="chart-empty" style="display:none">No links yet. Create your first one.</div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- create / edit modal -->
+    <div id="modal" class="modal-backdrop">
+      <div class="modal">
+        <h3 id="modal-title">Create a link</h3>
+        <input id="m-url" type="text" placeholder="https://example.com/your/long/link" />
+        <input id="m-alias" class="mono" type="text" placeholder="custom name (optional)" />
+        <div id="m-err" class="auth-err"></div>
+        <div class="modal-actions">
+          <button id="m-cancel" class="btn btn-ghost">Cancel</button>
+          <button id="m-save" class="btn">Create</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- qr modal -->
+    <div id="qr-modal" class="modal-backdrop">
+      <div class="modal">
+        <h3>QR code</h3>
+        <div id="qr-preview" class="qr-preview"></div>
+        <div id="qr-target" class="qr-target mono"></div>
+        <div class="modal-actions qr-actions">
+          <a id="qr-png" class="btn btn-ghost" href="#">PNG</a>
+          <a id="qr-svg" class="btn btn-ghost" href="#">SVG</a>
+          <button id="qr-print" class="btn btn-ghost">Print</button>
+          <button id="qr-close" class="btn">Done</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/shell.js"></script>
+    <script src="/links.js"></script>
+  </body>
+</html>

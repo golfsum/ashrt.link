@@ -543,6 +543,57 @@ footer { display: flex; flex-direction: column; gap: 6px; }
 .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(12px); background: var(--panel-2); border: 1px solid var(--border); color: var(--text); padding: 10px 16px; border-radius: 10px; font-size: 13px; opacity: 0; transition: all 0.25s ease; z-index: 60; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* ----- links table ----- */
+.toolbar { display: flex; gap: 10px; margin-bottom: 16px; }
+.toolbar-search {
+  flex: 1; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; color: var(--text); padding: 10px 14px; font-size: 14px; font-family: inherit;
+}
+.toolbar-search:focus { outline: none; border-color: var(--accent); }
+.toolbar-select {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  color: var(--text); padding: 10px 12px; font-size: 14px; font-family: inherit; cursor: pointer;
+}
+.table-card { padding: 6px 8px; }
+.ltable-head, .ltable-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 76px 80px 120px 84px 150px;
+  gap: 10px; align-items: center; padding: 12px 14px;
+}
+.ltable-head { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--faint); border-bottom: 1px solid var(--border); }
+.ltable-head .num, .ltable-row .num { text-align: right; }
+.ltable-row { border-bottom: 1px solid var(--border); }
+.ltable-row:last-child { border-bottom: 0; }
+.lt-short .tl-slug { color: var(--accent); font-weight: 600; text-decoration: none; }
+.lt-short .tl-slug:hover { text-decoration: underline; }
+.lt-dest { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lt-date { color: var(--faint); font-size: 13px; }
+.num { font-weight: 600; font-size: 14px; }
+.status-pill { font-size: 11px; font-weight: 600; color: var(--good); background: rgba(52,211,153,0.12); border: 1px solid rgba(52,211,153,0.3); padding: 2px 9px; border-radius: 999px; }
+.lt-actions { display: flex; gap: 5px; justify-content: flex-end; }
+.lt-actions .icon-btn { text-decoration: none; }
+
+/* ----- link detail ----- */
+.back-link { display: inline-block; color: var(--muted); text-decoration: none; font-size: 13px; margin-bottom: 14px; }
+.back-link:hover { color: var(--text); }
+.dest-link { color: var(--muted); text-decoration: none; }
+.dest-link:hover { color: var(--accent); }
+
+/* ----- QR ----- */
+.qr-preview { background: #fff; border-radius: 12px; padding: 16px; display: flex; justify-content: center; }
+.qr-preview img { width: 200px; height: 200px; display: block; }
+.qr-target { text-align: center; color: var(--muted); font-size: 13px; margin: 12px 0 4px; word-break: break-all; }
+.qr-actions { flex-wrap: wrap; }
+.qr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; }
+.qr-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 16px; text-align: center; }
+.qr-img { background: #fff; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+.qr-img img { width: 100%; height: auto; display: block; }
+.qr-slug { color: var(--accent); font-weight: 600; font-size: 14px; }
+.qr-url { color: var(--faint); font-size: 12px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qr-card-actions { display: flex; gap: 6px; justify-content: center; margin-top: 12px; }
+.btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 8px; text-decoration: none; }
+.pro-banner { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
+
 @media (max-width: 900px) {
   .cards { grid-template-columns: repeat(2, 1fr); }
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
@@ -553,4 +604,7 @@ footer { display: flex; flex-direction: column; gap: 6px; }
   .soon-badge { display: none; }
   .sidebar-foot { margin-top: 0; border-top: 0; margin-left: auto; }
   .main { padding: 20px 16px; }
+  .ltable-head { display: none; }
+  .ltable-row { grid-template-columns: 1fr auto; gap: 6px 10px; }
+  .lt-dest, .lt-date, .ltable-row .num:nth-child(3), .ltable-row .num:nth-child(4) { display: none; }
 }

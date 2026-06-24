@@ -187,6 +187,25 @@ export const store = {
     return link?.uv?.length || 0
   },
 
+  // Full analytics for a single link (its detail page).
+  async linkSummary(slug) {
+    const l = await linkBackend.get(slug)
+    if (!l) return null
+    return {
+      slug: l.slug,
+      url: l.url,
+      owner: l.owner,
+      clicks: l.clicks || 0,
+      visitors: await this.uniquesForLink(slug),
+      createdAt: l.createdAt,
+      lastClickAt: l.lastClickAt || null,
+      series: l.daily || {},
+      devices: l.devices || {},
+      countries: l.countries || {},
+      referrers: l.referrers || {},
+    }
+  },
+
   // Aggregated analytics for a user's dashboard.
   async summary(owner) {
     const links = await this.byOwner(owner)
