@@ -28,11 +28,14 @@ const H_EMAIL = 'ashrt:email'
 const H_APIKEY = 'ashrt:apikey'
 const H_OAUTH = 'ashrt:oauth'
 const H_STRIPE = 'ashrt:stripe'
+const H_CAMP = 'ashrt:campaigns'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const LINKS_FILE = join(__dirname, '.links.json')
 const USERS_FILE = join(__dirname, '.users.json')
 const ACT_FILE = join(__dirname, '.activity.json')
+const CAMP_FILE = join(__dirname, '.campaigns.json')
+const HITS_FILE = join(__dirname, '.apihits.json')
 
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -363,4 +366,64 @@ export const users = {
     }
     return user
   },
+}
+
+/* ---------------------------- campaign storage ---------------------------- */
+
+const campBackend = useKV ? kvHash(H_CAMP) : fileHash(CAMP_FILE, 'id')
+
+export const campaigns = {
+  async byOwner(owner) {
+    const all = await campBackend.all()
+    return all.filter((c) => c.owner === owner).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+  },
+  async get(id) {
+    return campBackend.get(id)
+  },
+  async create(camp) {
+    await campBackend.put(camp.id, camp)
+    return camp
+  },
+  async remove(id) {
+    await campBackend.del(id)
+  },
+}
+
+/* ----------------------------- API usage stats ---------------------------- */
+
+export const apiUsage = {
+  // Increment today's request counter for a user.
+  async record(owner) {
+    if (!owner) return
+    if (useKV) {
+      await redis(['HINCRBY', `ashrt:apihits:${owner}`, today(), 1])
+    } else {
+      const all = hitsRead()
+      all[owner] = all[owner] || {}
+      all[owner][today()] = (all[owner][today()] || 0) + 1
+      hitsWrite(all)
+    }
+  },
+  // Returns { 'YYYY-MM-DD': count } for the user.
+  async byDay(owner) {
+    if (useKV) {
+      const flat = (await redis(['HGETALL', `ashrt:apihits:${owner}`])) || []
+      const out = {}
+      for (let i = 0; i < flat.length; i += 2) out[flat[i]] = Number(flat[i + 1])
+      return out
+    }
+    return hitsRead()[owner] || {}
+  },
+}
+
+function hitsRead() {
+  if (!existsSync(HITS_FILE)) return {}
+  try {
+    return JSON.parse(readFileSync(HITS_FILE, 'utf8'))
+  } catch {
+    return {}
+  }
+}
+function hitsWrite(obj) {
+  writeFileSync(HITS_FILE, JSON.stringify(obj, null, 2))
 }

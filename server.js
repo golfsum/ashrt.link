@@ -4,7 +4,7 @@ import crypto from 'node:crypto'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 import dotenv from 'dotenv'
-import { store, users } from './store.js'
+import { store, users, campaigns, apiUsage } from './store.js'
 import {
   newUserId,
   newApiKey,
@@ -21,7 +21,7 @@ import {
   authUrl,
   fetchProfile,
 } from './auth.js'
-import { billingEnabled, createCheckoutUrl, parseWebhook, FREE_LINK_LIMIT } from './billing.js'
+import { billingEnabled, planAvailable, createCheckoutUrl, parseWebhook, FREE_LINK_LIMIT, PAID_PLANS } from './billing.js'
 import QRCode from 'qrcode'
 
 dotenv.config()
@@ -51,7 +51,7 @@ app.post('/api/billing/webhook', express.raw({ type: '*/*' }), async (req, res) 
       const s = event.data.object
       const user = await users.getById(s.client_reference_id)
       if (user) {
-        user.plan = 'pro'
+        user.plan = s.metadata?.plan || 'pro'
         user.stripeCustomerId = s.customer || user.stripeCustomerId
         user.subscriptionId = s.subscription || user.subscriptionId
         await users.update(user)
@@ -67,7 +67,8 @@ app.post('/api/billing/webhook', express.raw({ type: '*/*' }), async (req, res) 
       const sub = event.data.object
       const user = await users.getByStripe(sub.customer)
       if (user) {
-        user.plan = ['active', 'trialing'].includes(sub.status) ? 'pro' : 'free'
+        const active = ['active', 'trialing'].includes(sub.status)
+        user.plan = active ? sub.metadata?.plan || user.plan || 'pro' : 'free'
         await users.update(user)
       }
     }
@@ -81,15 +82,26 @@ app.use(express.json())
 app.use(cors())
 app.use(attachUser(users))
 
+// Count programmatic (API-key) requests to /api/* for the usage graph.
+app.use((req, _res, next) => {
+  if (req.user && req.get('x-api-key') && req.path.startsWith('/api/')) {
+    apiUsage.record(req.user.id).catch(() => {})
+  }
+  next()
+})
+
+const isPaid = (u) => PAID_PLANS.includes(u?.plan)
+
 // Names that can't be used as a custom alias (they're routes or static assets).
 const RESERVED = new Set([
   'api', 'auth', 'login', 'signup', 'dashboard', 'account', 'health',
   'privacy', 'terms', 'links', 'link', 'analytics', 'qr', 'campaigns', 'billing', 'settings',
   'robots.txt', 'favicon.svg', 'index.html', 'styles.css',
   'app.js', 'auth.js', 'landing.js', 'account.js', 'charts.js', 'dashboard.js',
-  'shell.js', 'links.js', 'link.js', 'qr.js',
+  'shell.js', 'links.js', 'link.js', 'qr.js', 'campaigns.js', 'api.js',
   'login.html', 'signup.html', 'dashboard.html', 'account.html',
   'privacy.html', 'terms.html', 'links.html', 'link.html', 'qr.html',
+  'campaigns.html', 'api.html',
 ])
 
 const shortUrl = (slug) => `${BASE_URL}/${slug}`
@@ -234,19 +246,77 @@ app.post('/api/account/rotate-key', requireUser, async (req, res) => {
 /* ================================ billing ================================= */
 
 app.get('/api/billing/status', (req, res) => {
-  res.json({ enabled: billingEnabled(), plan: req.user?.plan || 'free', freeLimit: FREE_LINK_LIMIT })
+  res.json({
+    enabled: billingEnabled(),
+    plan: req.user?.plan || 'free',
+    freeLimit: FREE_LINK_LIMIT,
+    available: { pro: planAvailable('pro'), business: planAvailable('business') },
+  })
 })
 
 app.post('/api/billing/checkout', requireUser, async (req, res) => {
-  if (!billingEnabled()) return res.status(503).json({ error: 'Billing is not set up yet' })
-  if (req.user.plan === 'pro') return res.status(400).json({ error: "You're already on Pro" })
+  const plan = PAID_PLANS.includes(req.body?.plan) ? req.body.plan : 'pro'
+  if (!planAvailable(plan)) return res.status(503).json({ error: `The ${plan} plan isn't set up yet` })
+  if (req.user.plan === plan) return res.status(400).json({ error: `You're already on ${plan}` })
   try {
-    const url = await createCheckoutUrl(req.user, BASE_URL)
+    const url = await createCheckoutUrl(req.user, BASE_URL, plan)
     res.json({ url })
   } catch (err) {
     console.error('[checkout]', err.message)
     res.status(500).json({ error: 'Could not start checkout' })
   }
+})
+
+/* ================================ campaigns =============================== */
+
+app.get('/api/campaigns', requireUser, async (req, res) => {
+  const list = await campaigns.byOwner(req.user.id)
+  const links = await store.byOwner(req.user.id)
+  const out = []
+  for (const c of list) {
+    const linksIn = links.filter((l) => l.campaign === c.id)
+    let visitors = 0
+    for (const l of linksIn) visitors += await store.uniquesForLink(l.slug)
+    out.push({
+      ...c,
+      links: linksIn.length,
+      clicks: linksIn.reduce((s, l) => s + (l.clicks || 0), 0),
+      visitors,
+    })
+  }
+  res.json({ campaigns: out })
+})
+
+app.post('/api/campaigns', requireUser, async (req, res) => {
+  const name = String(req.body?.name || '').trim()
+  if (!name) return res.status(400).json({ error: 'Name your campaign' })
+  const camp = { id: 'c_' + crypto.randomBytes(6).toString('base64url'), owner: req.user.id, name, createdAt: Date.now() }
+  await campaigns.create(camp)
+  res.json(camp)
+})
+
+app.delete('/api/campaigns/:id', requireUser, async (req, res) => {
+  const camp = await campaigns.get(req.params.id)
+  if (!camp || camp.owner !== req.user.id) return res.status(404).json({ error: 'Not found' })
+  await campaigns.remove(req.params.id)
+  res.json({ ok: true })
+})
+
+/* ------------------------------- API usage -------------------------------- */
+
+app.get('/api/usage', requireUser, async (req, res) => {
+  const byDay = await apiUsage.byDay(req.user.id)
+  const today = new Date().toISOString().slice(0, 10)
+  const month = today.slice(0, 7)
+  const monthTotal = Object.entries(byDay).reduce((s, [d, n]) => (d.startsWith(month) ? s + n : s), 0)
+  const limits = { free: 100, pro: 1000, business: 10000 }
+  res.json({
+    byDay,
+    today: byDay[today] || 0,
+    month: monthTotal,
+    plan: req.user.plan || 'free',
+    dailyLimit: limits[req.user.plan || 'free'] || limits.free,
+  })
 })
 
 /* ================================== links ================================= */
@@ -266,12 +336,12 @@ app.post('/api/links', async (req, res) => {
     return res.status(401).json({ error: 'Sign up for a free account to use custom aliases', needsAccount: true })
   }
 
-  // Free-plan link cap (Pro is unlimited). Doesn't apply to anonymous links.
-  if (req.user && (req.user.plan || 'free') !== 'pro') {
+  // Free-plan link cap (paid plans are unlimited). Doesn't apply to anonymous links.
+  if (req.user && !isPaid(req.user)) {
     const mine = await store.byOwner(req.user.id)
     if (mine.length >= FREE_LINK_LIMIT) {
       return res.status(402).json({
-        error: `Free accounts can keep ${FREE_LINK_LIMIT} links. Upgrade to Pro for unlimited.`,
+        error: `Free accounts can keep ${FREE_LINK_LIMIT} links. Upgrade for unlimited.`,
         needsUpgrade: true,
       })
     }
@@ -295,6 +365,7 @@ app.post('/api/links', async (req, res) => {
     slug,
     url,
     owner: req.user ? req.user.id : null,
+    campaign: (req.user && req.body?.campaign) || null,
     source: req.body?.source || (req.user ? (req.get('x-api-key') ? 'api' : 'dashboard') : 'anon'),
   })
   if (req.user) await store.logActivity(req.user.id, { type: 'created', slug, at: Date.now() })
@@ -319,6 +390,7 @@ app.patch('/api/links/:slug', requireUser, async (req, res) => {
   const url = normalize(req.body?.url)
   if (!url) return res.status(400).json({ error: 'Give me a URL' })
   link.url = url
+  if (req.body?.campaign !== undefined) link.campaign = req.body.campaign || null
   await store.add(link) // add() upserts by slug
   await store.logActivity(req.user.id, { type: 'edited', slug: link.slug, at: Date.now() })
   res.json(withUrl(link))

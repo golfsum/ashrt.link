@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+    <title>API · ashrt.link</title>
+  </head>
+  <body data-page="api">
+    <div class="app">
+      <aside class="sidebar" id="sidebar"></aside>
+      <main class="main">
+        <div class="main-inner">
+          <header class="topbar">
+            <div>
+              <h1>API</h1>
+              <p class="sub">Create and manage links programmatically with your personal key.</p>
+            </div>
+          </header>
+
+          <section class="cards">
+            <div class="card metric"><div class="label">Requests Today</div><div id="m-today" class="value">0</div></div>
+            <div class="card metric"><div class="label">This Month</div><div id="m-month" class="value">0</div></div>
+            <div class="card metric"><div class="label">Daily Limit</div><div id="m-limit" class="value">—</div></div>
+            <div class="card metric"><div class="label">Plan</div><div id="m-plan" class="value">Free</div></div>
+          </section>
+
+          <section class="panel-card">
+            <div class="panel-head"><h2>Requests (last 14 days)</h2></div>
+            <div id="chart-usage" class="chart-wrap"></div>
+          </section>
+
+          <section class="panel-card" style="margin-top:16px">
+            <div class="panel-head"><h2>Your API key</h2></div>
+            <p class="panel-sub">Send it in the <span class="mono">x-api-key</span> header. Keep it private.</p>
+            <div class="key-row">
+              <input id="apikey" class="mono" type="text" readonly value="••••••••••••••••" />
+              <button id="reveal" class="copy">Show</button>
+              <button id="copykey" class="copy">Copy</button>
+              <button id="rotate" class="copy danger-btn">Rotate</button>
+            </div>
+          </section>
+
+          <section class="panel-card" style="margin-top:16px">
+            <div class="panel-head">
+              <h2>Example request</h2>
+              <div class="segment" id="lang">
+                <button data-lang="curl" class="active">curl</button>
+                <button data-lang="js">JavaScript</button>
+                <button data-lang="py">Python</button>
+                <button data-lang="php">PHP</button>
+              </div>
+            </div>
+            <pre id="code" class="snippet mono"></pre>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <script src="/shell.js"></script>
+    <script src="/charts.js"></script>
+    <script src="/api.js"></script>
+  </body>
+</html>

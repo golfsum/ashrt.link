@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+    <title>Campaigns · ashrt.link</title>
+  </head>
+  <body data-page="campaigns">
+    <div class="app">
+      <aside class="sidebar" id="sidebar"></aside>
+      <main class="main">
+        <div class="main-inner">
+          <header class="topbar">
+            <div>
+              <h1>Campaigns</h1>
+              <p class="sub">Group links by campaign and track their combined performance.</p>
+            </div>
+            <div class="actions"><button id="create" class="btn">New Campaign</button></div>
+          </header>
+
+          <div id="grid" class="camp-grid"></div>
+          <div id="empty" class="chart-empty" style="display:none">No campaigns yet. Create one to group your links.</div>
+        </div>
+      </main>
+    </div>
+
+    <div id="modal" class="modal-backdrop">
+      <div class="modal">
+        <h3>New campaign</h3>
+        <input id="c-name" type="text" placeholder="e.g. Summer Sale" />
+        <div id="c-err" class="auth-err"></div>
+        <div class="modal-actions">
+          <button id="c-cancel" class="btn btn-ghost">Cancel</button>
+          <button id="c-save" class="btn">Create</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/shell.js"></script>
+    <script src="/campaigns.js"></script>
+  </body>
+</html>

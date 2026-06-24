@@ -1,6 +1,18 @@
 const $ = (id) => document.getElementById(id)
 let links = []
+let campaignList = []
 let editingSlug = null
+
+async function loadCampaigns() {
+  try {
+    campaignList = (await (await fetch('/api/campaigns')).json()).campaigns || []
+  } catch {
+    campaignList = []
+  }
+  $('m-campaign').innerHTML =
+    '<option value="">No campaign</option>' +
+    campaignList.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')
+}
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
@@ -82,6 +94,7 @@ function openCreate() {
   $('m-url').value = ''
   $('m-alias').value = ''
   $('m-alias').style.display = ''
+  $('m-campaign').value = ''
   $('m-err').textContent = ''
   $('modal').classList.add('show')
   $('m-url').focus()
@@ -94,6 +107,7 @@ function openEdit(slug) {
   $('m-save').textContent = 'Save'
   $('m-url').value = l.url
   $('m-alias').style.display = 'none' // alias (slug) can't change
+  $('m-campaign').value = l.campaign || ''
   $('m-err').textContent = ''
   $('modal').classList.add('show')
   $('m-url').focus()
@@ -106,18 +120,19 @@ async function save() {
   if (!url) return
   $('m-save').disabled = true
   try {
+    const campaign = $('m-campaign').value || null
     let res
     if (editingSlug) {
       res = await fetch('/api/links/' + editingSlug, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url, campaign }),
       })
     } else {
       res = await fetch('/api/links', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, alias: $('m-alias').value.trim() || undefined }),
+        body: JSON.stringify({ url, alias: $('m-alias').value.trim() || undefined, campaign }),
       })
     }
     const data = await res.json()
@@ -174,5 +189,6 @@ $('qr-modal').addEventListener('click', (e) => e.target === $('qr-modal') && $('
 ;(async () => {
   const user = await window.shellReady
   if (!user) return
+  await loadCampaigns()
   await load()
 })()

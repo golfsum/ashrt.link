@@ -3,5 +3,7 @@ node_modules
 .links.json
 .users.json
 .activity.json
+.campaigns.json
+.apihits.json
 *.log
 .vercel

@@ -63,16 +63,20 @@ async function create() {
   }
 }
 
-// Start (or prompt for) a Pro subscription.
-async function upgrade() {
+// Start (or prompt for) a paid subscription.
+async function upgrade(plan, btn, label) {
   if (!user) {
     window.location.href = '/signup'
     return
   }
-  $('pro-btn').disabled = true
-  $('pro-btn').textContent = 'Loading...'
+  btn.disabled = true
+  btn.textContent = 'Loading...'
   try {
-    const res = await fetch('/api/billing/checkout', { method: 'POST' })
+    const res = await fetch('/api/billing/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan }),
+    })
     const data = await res.json()
     if (data.url) {
       window.location.href = data.url
@@ -82,15 +86,16 @@ async function upgrade() {
   } catch {
     alert('Could not start checkout.')
   } finally {
-    $('pro-btn').disabled = false
-    $('pro-btn').textContent = 'Upgrade to Pro'
+    btn.disabled = false
+    btn.textContent = label
   }
 }
 
 $('go').addEventListener('click', create)
 $('url').addEventListener('keydown', (e) => e.key === 'Enter' && create())
 $('alias').addEventListener('keydown', (e) => e.key === 'Enter' && create())
-$('pro-btn').addEventListener('click', upgrade)
+$('pro-btn').addEventListener('click', () => upgrade('pro', $('pro-btn'), 'Upgrade to Pro'))
+$('biz-btn')?.addEventListener('click', () => upgrade('business', $('biz-btn'), 'Choose Business'))
 $('result-copy').addEventListener('click', () => {
   navigator.clipboard?.writeText($('result-link').href).catch(() => {})
   $('result-copy').textContent = '✓'
