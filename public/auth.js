@@ -27,7 +27,6 @@ fetch('/auth/config')
     if (providers.google) btns.push(oauthBtn('google', 'Continue with Google'))
     if (providers.github) btns.push(oauthBtn('github', 'Continue with GitHub'))
     if (!btns.length) {
-      // No social logins configured - hide the divider, keep email/password.
       wrap.style.display = 'none'
       $('divider').style.display = 'none'
       return
@@ -43,11 +42,11 @@ function oauthBtn(provider, label) {
   return `<a class="oauth-btn" href="/auth/${provider}">${label}</a>`
 }
 
-// Surface OAuth errors passed back as ?error=...
 const ERRORS = {
   oauth: 'Social sign-in failed. Try again.',
   state: 'Your sign-in session expired. Try again.',
   email: 'We could not read an email from that account.',
+  verification: 'That verification link is invalid or expired. Log in and request a new one.',
 }
 const qpError = new URLSearchParams(location.search).get('error')
 if (qpError && ERRORS[qpError]) $('err').textContent = ERRORS[qpError]
@@ -61,12 +60,8 @@ $('form').addEventListener('submit', async (e) => {
   }
   if (isSignup) body.name = $('name').value.trim()
 
-  // Hand over any links this browser made as a guest so the new account owns
-  // them. ?claim=<token> covers arriving straight from a shared stats page.
-  const fromUrl = new URLSearchParams(location.search).get('claim')
-  const tokens = new Set(window.GuestLinks ? window.GuestLinks.tokens() : [])
-  if (fromUrl) tokens.add(fromUrl)
-  if (tokens.size) body.claimTokens = [...tokens]
+  // Guest links stay temporary until the account is verified. The app shell
+  // claims them automatically after /auth/me reports a verified account.
 
   $('submit').disabled = true
   $('submit').textContent = isSignup ? 'Creating...' : 'Logging in...'
@@ -81,8 +76,6 @@ $('form').addEventListener('submit', async (e) => {
       $('err').textContent = data.error || 'Something went wrong'
       return
     }
-    // The tokens have done their job; the links belong to an account now.
-    if (window.GuestLinks) window.GuestLinks.clear()
     window.location.href = landing()
   } catch {
     $('err').textContent = 'Network error. Try again.'
