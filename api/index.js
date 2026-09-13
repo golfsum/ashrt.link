@@ -14,10 +14,6 @@ import {
   sendVerificationEmail,
 } from '../lib/verification.js'
 
-// Repair derived Redis indexes and quarantine links to built-in blocked
-// destinations before this serverless instance starts serving traffic. The
-// maintenance routine is lock-protected and rate-limited across instances, so
-// most cold starts only perform one cheap metadata read.
 await runStartupMaintenance()
 
 const outer = express()
@@ -43,20 +39,10 @@ async function requestUser(req) {
 }
 
 function verificationView(user) {
-  return {
-    emailVerified: isEmailVerified(user),
-    verificationRequired: !isEmailVerified(user),
-  }
+  const verified = isEmailVerified(user)
+  return { emailVerified: verified, verificationRequired: !verified }
 }
 
-/**
- * Password signup abuse controls.
- *
- * The existing register limiter is per IP/hour. This adds longer-lived device
- * and IP checks against actual account records, so clearing cookies alone does
- * not provide unlimited fresh accounts, while a shared office/mobile IP still
- * has considerably more room than one browser/device.
- */
 outer.use('/auth/register', async (req, res, next) => {
   if (!emailVerificationConfigured()) {
     return res.status(503).json({
@@ -88,8 +74,6 @@ outer.use('/auth/register', async (req, res, next) => {
     // read problem must not turn signup into an outage.
   }
 
-  // Let the normal registration route create the account, then attach the
-  // browser fingerprint and send verification before the response is released.
   const originalJson = res.json.bind(res)
   res.json = (body) => {
     if (res.statusCode >= 400 || !body?.user?.id || body.user.provider !== 'password') return originalJson(body)
@@ -122,19 +106,22 @@ outer.use('/auth/register', async (req, res, next) => {
   next()
 })
 
-// Add verification state to the existing /auth/me payload without duplicating
-// the application's session/user response logic.
+// Add verification state from the stored record, because safeUser intentionally
+// does not expose every internal account field.
 outer.use('/auth/me', (_req, res, next) => {
   const originalJson = res.json.bind(res)
   res.json = (body) => {
-    if (res.statusCode < 400 && body?.user) Object.assign(body.user, verificationView(body.user))
-    return originalJson(body)
+    if (res.statusCode >= 400 || !body?.user?.id) return originalJson(body)
+    ;(async () => {
+      const stored = await users.getById(body.user.id).catch(() => null)
+      Object.assign(body.user, verificationView(stored || body.user))
+      originalJson(body)
+    })()
+    return res
   }
   next()
 })
 
-// Verification links are signed and short-lived. Reusing one after verification
-// is harmless; it only converges the same boolean to true again.
 outer.get('/auth/verify-email', async (req, res) => {
   const payload = readVerificationToken(String(req.query.token || ''))
   if (!payload) return res.redirect('/login?error=verification')
@@ -179,12 +166,6 @@ outer.post('/api/verification/resend', async (req, res) => {
   }
 })
 
-/**
- * Unverified password accounts may sign in and inspect the dashboard, but they
- * cannot mutate product data, mint/use API access, claim guest links, or pay to
- * unlock more capacity until the email address is confirmed. Guests still get
- * the deliberately temporary guest-link flow.
- */
 outer.use(async (req, res, next) => {
   if (!req.path.startsWith('/api/') || ['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next()
   if (
@@ -208,9 +189,6 @@ outer.use(async (req, res, next) => {
   next()
 })
 
-// All remaining behavior, including Stripe's raw-body webhook, stays inside the
-// existing app. No JSON parser is installed on this outer wrapper, so webhook
-// signature verification is unaffected.
 outer.use(app)
 
 export default outer
