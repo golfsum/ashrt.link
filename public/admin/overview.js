@@ -37,21 +37,19 @@ function bars(entries, total) {
 function render() {
   const u = data.users
   const l = data.links
+  const raw = data.raw || {}
 
   $('kpis').innerHTML = [
-    kpi('Total users', u.total, `${num(u.today)} today · ${num(u.last7)} this week`),
-    kpi('Total links', l.total, `${num(l.guest)} guest · ${num(l.owned)} in accounts`),
-    kpi('Total clicks', data.clicks.total, `${num(data.clicks.today)} today`),
-    kpi(`Clicks (${data.days}d)`, data.clicks.window, `${num(data.campaigns)} campaigns`),
+    kpi('Real customers', u.total, `${num(u.today)} today · ${num(u.last7)} this week`),
+    kpi('Clean links', l.total, `${num(l.guest)} guest · ${num(l.owned)} in verified accounts`),
+    kpi('Clean clicks', data.clicks.total, `${num(data.clicks.today)} today`),
+    kpi(`Clean clicks (${data.days}d)`, data.clicks.window, `${num(data.campaigns)} campaigns`),
     kpi('Paid accounts', data.billing.paid, data.billing.enabled ? 'Stripe connected' : 'Billing not configured'),
-    kpi('Needs review', (l.flagged || 0) + (l.disabled || 0), `${num(l.flagged)} flagged · ${num(l.disabled)} disabled`),
+    kpi('Excluded from stats', u.excluded || 0, `${num(u.abuseExcluded || 0)} abuse/suspended · ${num(u.unverified || 0)} unverified`),
   ].join('')
 
   Charts.line($('chart-clicks'), seriesPoints(data.series))
 
-  // Plans partition the accounts, so they belong on one scale. Suspended and
-  // admin cut across plans, so putting them in the same bar list would produce
-  // percentages that do not add up to anything.
   $('accounts').innerHTML =
     bars(
       [
@@ -62,9 +60,10 @@ function render() {
       u.total,
     ) +
     `<div class="kv kv-inline">
-      <div><span>Suspended</span><span>${num(u.suspended || 0)}</span></div>
-      <div><span>Admins</span><span>${num(u.admin || 0)}</span></div>
-      <div><span>New this month</span><span>${num(u.last30 || 0)}</span></div>
+      <div><span>Excluded abuse/suspended</span><span>${num(u.abuseExcluded || 0)}</span></div>
+      <div><span>Awaiting verification</span><span>${num(u.unverified || 0)}</span></div>
+      <div><span>Raw registered records</span><span>${num(u.rawTotal ?? raw.users ?? u.total)}</span></div>
+      <div><span>New real customers this month</span><span>${num(u.last30 || 0)}</span></div>
     </div>`
 
   $('linkstatus').innerHTML = bars(
@@ -75,7 +74,11 @@ function render() {
       { label: 'Expired', value: l.expired || 0 },
     ].filter((e) => e.value > 0),
     l.counted || l.total,
-  )
+  ) +
+    `<div class="kv kv-inline">
+      <div><span>Raw link records</span><span>${num(l.rawTotal ?? raw.links ?? l.total)}</span></div>
+      <div><span>Raw clicks incl. excluded abuse</span><span>${num(data.clicks.rawTotal ?? raw.clicks ?? data.clicks.total)}</span></div>
+    </div>`
 }
 
 async function renderAttention() {
@@ -110,7 +113,6 @@ async function renderAttention() {
     )
   }
 
-  // Domains where the customer has done everything and we have not.
   const waiting = data?.domainsWaiting || []
   if (waiting.length) {
     items.push(
