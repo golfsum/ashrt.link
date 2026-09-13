@@ -65,6 +65,57 @@ window.toast = function (msg) {
   }, 1800)
 }
 
+function guestTokens() {
+  try {
+    const rows = JSON.parse(localStorage.getItem('ashrt_guest_links') || '[]')
+    return Array.isArray(rows) ? rows.map((r) => r?.token).filter(Boolean).slice(0, 20) : []
+  } catch {
+    return []
+  }
+}
+
+function clearGuestTokens() {
+  try { localStorage.removeItem('ashrt_guest_links') } catch {}
+}
+
+async function claimGuestLinksIfVerified(user) {
+  if (!user?.emailVerified) return
+  const tokens = guestTokens()
+  if (!tokens.length) return
+  try {
+    const res = await fetch('/api/guest/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tokens }),
+    })
+    if (res.ok) clearGuestTokens()
+  } catch {}
+}
+
+function showVerificationBanner(user) {
+  if (!user?.verificationRequired || document.getElementById('verify-email-banner')) return
+  const bar = document.createElement('div')
+  bar.id = 'verify-email-banner'
+  bar.style.cssText = 'position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding:10px 16px;background:#2a2105;border-bottom:1px solid #6b5310;color:#fef3c7;font:600 13px Inter,system-ui,sans-serif;text-align:center'
+  bar.innerHTML = `<span>Verify ${String(user.email || '').replace(/[&<>\"]/g, '')} before creating permanent links or using account features.</span><button id="resend-verification" style="border:1px solid #a9861b;background:#f59e0b;color:#111827;border-radius:8px;padding:6px 10px;font-weight:800;cursor:pointer">Resend email</button>`
+  document.body.prepend(bar)
+  const btn = document.getElementById('resend-verification')
+  btn.onclick = async () => {
+    btn.disabled = true
+    btn.textContent = 'Sending...'
+    try {
+      const res = await fetch('/api/verification/resend', { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      window.toast(res.ok ? 'Verification email sent' : data.error || 'Could not send verification email')
+    } catch {
+      window.toast('Could not send verification email')
+    } finally {
+      btn.disabled = false
+      btn.textContent = 'Resend email'
+    }
+  }
+}
+
 // Resolves to the signed-in user, or redirects to /login. Pages await this.
 window.shellReady = (async () => {
   let user = null
@@ -81,8 +132,11 @@ window.shellReady = (async () => {
   const pl = document.getElementById('su-plan')
   if (nm) nm.textContent = user.email
   if (pl) {
-    pl.textContent = user.plan === 'pro' ? 'Pro' : 'Free'
-    if (user.plan === 'pro') pl.classList.add('pro')
+    pl.textContent = user.plan === 'business' ? 'Business' : user.plan === 'pro' ? 'Pro' : 'Free'
+    if (user.plan === 'pro' || user.plan === 'business') pl.classList.add('pro')
   }
+  showVerificationBanner(user)
+  claimGuestLinksIfVerified(user)
+  if (new URLSearchParams(location.search).get('verified') === '1') window.toast('Email verified')
   return user
 })()
