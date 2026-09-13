@@ -4,17 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>UTM Link Tracker - Build and Track UTM Links | ashrt.link</title>
-    <meta name="description" content="Build a UTM-tagged tracking link without hand-editing URLs, then see the clicks it gets. Free, no account needed." />
+    <meta name="description" content="Build a UTM-tagged tracking link without hand-editing URLs, then see the clicks it gets. The Free plan requires a verified account." />
     <link rel="canonical" href="https://www.ashrt.link/utm-link-tracker" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta property="og:type" content="article" />
     <meta property="og:site_name" content="ashrt.link" />
     <meta property="og:url" content="https://www.ashrt.link/utm-link-tracker" />
     <meta property="og:title" content="UTM Link Tracker - Build and Track UTM Links | ashrt.link" />
-    <meta property="og:description" content="Build a UTM-tagged tracking link without hand-editing URLs, then see the clicks it gets. Free, no account needed." />
+    <meta property="og:description" content="Build a UTM-tagged tracking link and see the clicks it gets. Free accounts require verification." />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="UTM Link Tracker - Build and Track UTM Links | ashrt.link" />
-    <meta name="twitter:description" content="Build a UTM-tagged tracking link without hand-editing URLs, then see the clicks it gets. Free, no account needed." />
+    <meta name="twitter:description" content="Build UTM-tagged tracking links with a verified free account." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -51,7 +51,7 @@
         </form>
         <div class="create-meta">
           <button type="button" class="link-btn" id="more-toggle">Add a campaign or UTM tags</button>
-          <span class="hint-inline">No account needed. Your link works immediately.</span>
+          <span class="hint-inline">Verify a free account to keep permanent UTM tracking links and manage them.</span>
         </div>
         <div id="advanced" class="quick-advanced" hidden>
           <div class="quick-fields">
@@ -80,7 +80,7 @@
           <div class="tool-result-foot">
             <span id="result-clicks">0 clicks so far</span>
             <span id="result-expiry"></span>
-            <a class="tool-result-cta" href="/signup" id="result-save">Save this link to a free account</a>
+            <a class="tool-result-cta" href="/signup" id="result-save">Save this link to a verified free account</a>
           </div>
         </div>
       </section>
@@ -139,7 +139,8 @@
           Enter your destination, open the options and fill in the tags you want. The
           parameters are merged into the destination URL, preserving any query string
           it already has, and the short link points at the tagged version. Nothing is
-          added that you did not type.
+          added that you did not type. The Free plan requires a verified account before
+          permanent links and account features are enabled.
         </p>
       </section>
 
@@ -199,6 +200,11 @@
           "@type": "Question",
           "name": "Which UTM parameters are required?",
           "acceptedAnswer": { "@type": "Answer", "text": "None are required technically. In practice utm_source and utm_medium are the two that make a report readable, and utm_campaign is worth adding whenever you run more than one thing at a time." }
+        },
+        {
+          "@type": "Question",
+          "name": "Does the Free plan require an account?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. The Free plan requires a verified account before permanent UTM tracking links and account features are enabled." }
         },
         {
           "@type": "Question",
