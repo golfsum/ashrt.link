@@ -9,6 +9,16 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/styles.css" />
+    <style>
+      .atable-links .atable-row { grid-template-columns: minmax(240px,1fr) 230px 90px 70px 105px 105px 260px; }
+      .atable-links .at-owner { display:flex; flex-direction:column; gap:3px; min-width:0; }
+      .atable-links .at-owner .at-sub { font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .atable-links .at-owner-missing { font-family:monospace; font-size:12px; }
+      @media (max-width: 1100px) {
+        .atable-links { overflow-x:auto; }
+        .atable-links .atable-row { min-width:1220px; }
+      }
+    </style>
     <title>Links · ashrt.link admin</title>
   </head>
   <body data-page="links" class="admin-body">
