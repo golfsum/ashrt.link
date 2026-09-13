@@ -185,12 +185,25 @@ test('a suspicious destination is imported flagged, not silently', async () => {
   }
 })
 
-test('an oversized batch is refused with the limit named', async () => {
-  const me = await signup()
+test('an oversized batch is refused with this plan\'s limit named, and the next one up', async () => {
+  const me = await signup('pro')
   const rows = Array.from({ length: 300 }, (_, i) => ({ url: `example.com/${i}` }))
   const res = await bulk(me.cookie, rows)
+  // Not a validation error: the request is well formed and a bigger plan would
+  // accept it, so it is answered as an upgrade rather than as a mistake.
+  assert.equal(res.status, 402)
+  assert.equal(res.body.upgradeTo, 'business')
+  assert.match(res.body.error, /250 at a time/)
+  assert.match(res.body.error, /Business imports 1000/)
+})
+
+test('the top plan\'s ceiling is a plain refusal, because there is nothing to upgrade to', async () => {
+  const me = await signup('business')
+  const rows = Array.from({ length: 1001 }, (_, i) => ({ url: `example.com/big-${i}` }))
+  const res = await bulk(me.cookie, rows)
   assert.equal(res.status, 400)
-  assert.match(res.body.error, /at most 250/)
+  assert.equal(res.body.needsUpgrade, undefined)
+  assert.match(res.body.error, /1000 at a time/)
 })
 
 test('bulk creation needs an account', async () => {

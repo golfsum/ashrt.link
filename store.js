@@ -51,13 +51,22 @@ const guestTokIdx = useKV ? collection('ashrt:gtok') : null
 const domainIdx = useKV ? collection('ashrt:domain') : null
 
 const actFile = jsonMapFile('.activity.json')
+const whqFile = jsonMapFile('.webhookq.json')
 const hitsFile = jsonMapFile('.apihits.json')
 const guestFile = jsonMapFile('.guesttokens.json')
 
 const lc = (s) => String(s || '').trim().toLowerCase()
 
-/** How many days of per-day click history to keep on a link record. */
-const DAILY_RETENTION_DAYS = 400
+/**
+ * How many days of per-day click history to keep on a link record.
+ *
+ * This is storage, not entitlement: it matches the longest window any plan
+ * sells (lib/plans.js), so the record can always answer what the top plan
+ * promises. What each plan is allowed to *see* is windowed at the API. Keeping
+ * the record longer than the plan shows is deliberate — upgrading reveals
+ * history that was already there rather than starting the clock again.
+ */
+export const DAILY_RETENTION_DAYS = 730
 
 /* ----------------------------- migration flags ---------------------------- */
 
@@ -228,6 +237,7 @@ function hydrate(link) {
     title: null,
     campaign: null,
     expiresAt: null,
+    startsAt: null,
     guest: !link.owner,
     lastClickAt: null,
     flagScore: 0,
@@ -240,11 +250,23 @@ export function isExpired(link) {
   return Boolean(link?.expiresAt && link.expiresAt <= Date.now())
 }
 
+/**
+ * A link with a go-live date that has not arrived yet.
+ *
+ * Separate from expired because it is the opposite problem and needs the
+ * opposite message: "not yet" rather than "no longer", and the link is going to
+ * start working on its own.
+ */
+export function isScheduled(link) {
+  return Boolean(link?.startsAt && link.startsAt > Date.now())
+}
+
 /** The status a link should be treated as right now. */
 export function effectiveStatus(link) {
   if (!link) return 'missing'
   if (link.status === 'disabled') return 'disabled'
   if (isExpired(link)) return 'expired'
+  if (isScheduled(link)) return 'scheduled'
   return link.status || 'active'
 }
 
@@ -534,6 +556,7 @@ export const store = {
       visitors: await this.uniquesForLink(slug),
       createdAt: l.createdAt,
       expiresAt: l.expiresAt,
+      startsAt: l.startsAt || null,
       lastClickAt: l.lastClickAt || null,
       series: l.daily || {},
       botSeries: l.botDaily || {},
@@ -666,6 +689,62 @@ export const store = {
         }).filter(Boolean)
       }
       return actFile.read()[owner] || []
+    } catch {
+      return []
+    }
+  },
+
+  /* ---------------------------- webhook retries --------------------------- */
+
+  /**
+   * Deliveries that failed and are waiting to be tried again.
+   *
+   * A queue rather than an inline retry: a receiver that is down should not
+   * hold open the request that triggered the event, and a serverless function
+   * that has already answered cannot keep retrying in the background.
+   *
+   * Capped, because a permanently broken endpoint must not be able to fill the
+   * store. The oldest entries are dropped first, which is the right direction:
+   * a two-hour-old notification is worth less than a fresh one.
+   */
+  async queueDelivery(entry) {
+    try {
+      if (useKV) {
+        await pipeline([
+          ['LPUSH', 'ashrt:whq', JSON.stringify(entry)],
+          ['LTRIM', 'ashrt:whq', 0, 999],
+        ])
+      } else {
+        const all = whqFile.read()
+        all.items = [entry, ...(all.items || [])].slice(0, 1000)
+        whqFile.write(all)
+      }
+    } catch {
+      /* a lost retry is better than a failed request */
+    }
+  },
+
+  /** Take everything currently queued, leaving the queue empty. */
+  async takeQueuedDeliveries(limit = 100) {
+    try {
+      if (useKV) {
+        const raw = (await redis(['LRANGE', 'ashrt:whq', 0, limit - 1])) || []
+        if (raw.length) await redis(['LTRIM', 'ashrt:whq', raw.length, -1])
+        return raw
+          .map((s) => {
+            try {
+              return JSON.parse(s)
+            } catch {
+              return null
+            }
+          })
+          .filter(Boolean)
+      }
+      const all = whqFile.read()
+      const items = (all.items || []).slice(0, limit)
+      all.items = (all.items || []).slice(limit)
+      whqFile.write(all)
+      return items
     } catch {
       return []
     }

@@ -10,6 +10,8 @@
   --accent: #818CF8;
   --accent-2: #A78BFA;
   --good: #34D399;
+  --warn: #F59E0B;
+  --bad: #F87171;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1360,6 +1362,8 @@ a.atable-row:hover { background: var(--panel-2); }
 }
 .quick-sep { color: var(--faint); }
 .quick-limit { color: var(--faint); margin-left: auto; }
+.quick-limit a { color: var(--accent); }
+.quick-limit.over { color: var(--warn); }
 .quick-result {
   margin-top: 14px;
   padding-top: 14px;
@@ -1943,50 +1947,14 @@ details.hist summary {
   gap: 18px;
   margin: 8px 0 40px;
 }
-.price-card {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 24px 22px;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-}
-.price-card-featured { border-color: var(--accent); }
-.price-tag {
-  position: absolute;
-  top: -11px;
-  left: 22px;
-  background: var(--accent);
-  color: #0b0b12;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  padding: 3px 10px;
-  border-radius: 999px;
-}
-.price-card h2 { font-size: 17px; margin: 0; }
-.price-amount { font-size: 34px; font-weight: 800; letter-spacing: -0.03em; margin: 6px 0 2px; }
-.price-blurb { color: var(--faint); font-size: 13px; line-height: 1.55; margin: 0 0 16px; min-height: 40px; }
 .price-cta { width: 100%; text-align: center; text-decoration: none; }
-
-.price-limits { margin: 18px 0 14px; padding: 14px 0 0; border-top: 1px solid var(--border); }
-.price-limits > div { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 13px; }
-.price-limits dt { color: var(--muted); }
-.price-limits dd { margin: 0; font-weight: 600; }
-
-.price-features { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 7px; }
-.price-features li { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: baseline; }
-.price-features li.on span { color: var(--good); }
-.price-features li.off { color: var(--faint); }
-.price-features li.off span { color: var(--faint); }
 
 .tick-list { list-style: none; padding: 0; margin: 0 0 8px; display: flex; flex-direction: column; gap: 10px; }
 .tick-list li { color: var(--muted); line-height: 1.6; padding-left: 20px; position: relative; }
 .tick-list li::before { content: '✓'; position: absolute; left: 0; color: var(--good); }
 .tick-list b { color: var(--text); }
 
-@media (max-width: 900px) { .price-grid { grid-template-columns: 1fr; } .price-blurb { min-height: 0; } }
+@media (max-width: 900px) { .price-grid { grid-template-columns: 1fr; } }
 
 /* Comparison tables */
 .table-note { color: var(--faint); font-size: 13px; line-height: 1.6; }
@@ -2163,4 +2131,109 @@ details.rules summary {
 
 @media (max-width: 700px) {
   .doc-table > div { grid-template-columns: 1fr; gap: 3px; }
+}
+
+/* Webhook endpoint rows */
+.hook-actions { grid-column: 1 / -1; display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.hook-actions .icon-btn { margin-left: auto; }
+
+/* ==========================================================================
+   Plan cards, shared by the homepage and the pricing page.
+
+   One set of rules for both, because the two pages render from the same
+   component. The important bit is the alignment: the cards are grid items so
+   they stretch to the same height, and the button is pushed to the bottom of
+   each with margin-top:auto, so three buttons line up even when one plan has
+   four more features listed than another.
+   ========================================================================== */
+
+.price-section { margin: 8px 0 40px; }
+.price-section .price-grid { margin-bottom: 14px; }
+
+.plan {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.plan-featured { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 18px 40px -20px rgba(129,140,248,0.5); }
+.plan-blurb { color: var(--faint); font-size: 13px; line-height: 1.55; margin: 0 0 14px; }
+.plan-price { margin-bottom: 2px; }
+.plan-price-note { color: var(--faint); font-size: 12px; margin-bottom: 16px; min-height: 16px; }
+.plan-points { list-style: none; margin: 0 0 20px; padding: 0; }
+.plan-points li { color: var(--muted); font-size: 14px; padding: 6px 0 6px 24px; position: relative; line-height: 1.45; }
+.plan-points li::before { content: '✓'; position: absolute; left: 0; top: 6px; color: var(--good); font-weight: 700; }
+
+/*
+ * The button sits on the floor of the card, whatever is above it.
+ *
+ * The transparent border matters: .btn has no border and .btn-ghost has a 1px
+ * one, so without this the filled "Choose Pro" button is two pixels shorter
+ * than the two beside it and the row of buttons does not line up.
+ */
+.plan .price-cta {
+  margin-top: auto;
+  width: 100%;
+  text-align: center;
+  text-decoration: none;
+  border: 1px solid transparent;
+  line-height: 1.2;
+}
+/* Specificity: the rule above would otherwise erase the ghost button's border. */
+.plan .price-cta.btn-ghost { border-color: var(--border); }
+.plan .price-cta.price-cta-current { border-style: dashed; border-color: var(--border); }
+.price-cta-current {
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--faint);
+  cursor: default;
+}
+.price-cta:disabled { opacity: 0.55; cursor: not-allowed; }
+.price-error { color: var(--bad); font-size: 13px; min-height: 18px; margin: 0; }
+
+/* Monthly / yearly switch */
+.billing-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  margin: 0 0 18px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.billing-toggle button {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.billing-toggle button.active { background: var(--accent); color: #0b0b0f; font-weight: 600; }
+
+/* Comparison table */
+.compare-wrap { overflow-x: auto; margin: 12px 0 28px; }
+.compare { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 560px; }
+.compare th, .compare td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.compare thead th { color: var(--text); font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; }
+.compare tbody th[scope='row'] { color: var(--muted); font-weight: 500; }
+.compare td { color: var(--text); font-variant-numeric: tabular-nums; }
+.compare-group th { background: var(--panel-2); color: var(--faint); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+.compare-off { color: var(--faint); }
+
+/* Usage meters on the account page */
+.usage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 4px 0 8px; }
+.usage-item { min-width: 0; }
+.usage-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 13px; }
+.usage-label { color: var(--muted); }
+.usage-count { font-weight: 600; font-variant-numeric: tabular-nums; }
+.usage-bar { height: 6px; border-radius: 999px; background: var(--panel-2); margin-top: 8px; overflow: hidden; }
+.usage-fill { height: 100%; background: var(--accent); border-radius: 999px; }
+.usage-fill.near { background: var(--warn); }
+.usage-fill.full { background: var(--bad); }
+.usage-note { color: var(--faint); font-size: 12px; margin-top: 6px; }
+
+@media (max-width: 760px) {
+  .billing-toggle { width: 100%; justify-content: center; }
 }

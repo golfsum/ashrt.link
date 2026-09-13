@@ -211,8 +211,157 @@ $('lang').addEventListener('click', (e) => {
   renderCode()
 })
 
+/* -------------------------------- webhooks -------------------------------- */
+
+let hooks = []
+let hookEvents = {}
+let hooksEntitled = false
+
+function renderHooks() {
+  if (!hooksEntitled) {
+    $('hooks').innerHTML =
+      '<div class="notice">Webhooks are part of the Business plan. <a href="/account">See plans</a></div>'
+    $('new-hook').hidden = true
+    return
+  }
+  $('new-hook').hidden = false
+
+  $('hooks').innerHTML = hooks.length
+    ? `<div class="key-list">${hooks
+        .map(
+          (h) => `<div class="key-item">
+            <div class="key-main">
+              <span class="key-name mono">${escapeHtml(h.url)}</span>
+              ${h.active ? '' : '<span class="pill pill-flagged">off</span>'}
+            </div>
+            <div class="key-scopes">${(h.events || []).map((e) => `<span class="scope-chip">${escapeHtml(e)}</span>`).join('')}</div>
+            <div class="key-meta">
+              last delivery ${when(h.lastDeliveryAt)}${h.lastStatus ? ` · HTTP ${h.lastStatus}` : ''}${
+                h.failures ? ` · ${h.failures} failed in a row` : ''
+              }${h.disabledReason ? ` · ${escapeHtml(h.disabledReason)}` : ''}
+            </div>
+            <div class="hook-actions">
+              <button class="btn btn-ghost btn-sm" data-test="${escapeHtml(h.id)}">Send a test</button>
+              ${h.active ? '' : `<button class="btn btn-ghost btn-sm" data-enable="${escapeHtml(h.id)}">Turn back on</button>`}
+              <button class="icon-btn danger" data-drop="${escapeHtml(h.id)}" title="Remove">✕</button>
+            </div>
+          </div>`,
+        )
+        .join('')}</div>`
+    : '<div class="chart-empty">No endpoints yet.</div>'
+
+  $('hooks').querySelectorAll('[data-drop]').forEach((b) => (b.onclick = () => dropHook(b.dataset.drop)))
+  $('hooks').querySelectorAll('[data-test]').forEach((b) => (b.onclick = () => testHook(b.dataset.test, b)))
+  $('hooks').querySelectorAll('[data-enable]').forEach((b) => (b.onclick = () => enableHook(b.dataset.enable)))
+}
+
+async function loadHooks() {
+  const data = await (await fetch('/api/webhooks')).json()
+  hooks = data.webhooks || []
+  hookEvents = data.events || {}
+  hooksEntitled = Boolean(data.entitled)
+  renderHooks()
+}
+
+function openHookModal() {
+  $('hook-url').value = ''
+  $('hook-form').hidden = false
+  $('hook-shown').hidden = true
+  $('hook-err').textContent = ''
+  $('hook-create').hidden = false
+  $('hook-cancel').textContent = 'Cancel'
+  $('hook-modal-title').textContent = 'Add an endpoint'
+  // The daily summary is off by default: it is the noisiest of them, and
+  // somebody adding an endpoint usually wants the lifecycle events first.
+  $('hook-events').innerHTML = Object.entries(hookEvents)
+    .map(
+      ([id, label]) => `<label class="scope-row">
+        <input type="checkbox" value="${escapeHtml(id)}" ${id === 'clicks.summary' ? '' : 'checked'} />
+        <span><span class="mono">${escapeHtml(id)}</span> ${escapeHtml(label)}</span>
+      </label>`,
+    )
+    .join('')
+  $('hook-modal').classList.add('show')
+  $('hook-url').focus()
+}
+
+async function createHook() {
+  const events = [...$('hook-events').querySelectorAll('input:checked')].map((i) => i.value)
+  if (!events.length) {
+    $('hook-err').textContent = 'Choose at least one event.'
+    return
+  }
+  $('hook-create').disabled = true
+  try {
+    const res = await fetch('/api/webhooks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: $('hook-url').value.trim(), events }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      $('hook-err').textContent = data.error || 'Could not add that endpoint'
+      return
+    }
+    // Shown once, like a key. It is what proves a delivery came from us.
+    $('hook-form').hidden = true
+    $('hook-shown').hidden = false
+    $('hook-secret').value = data.secret
+    $('hook-modal-title').textContent = 'Copy your signing secret'
+    $('hook-create').hidden = true
+    $('hook-cancel').textContent = 'Done'
+    await loadHooks()
+  } catch {
+    $('hook-err').textContent = 'Network error. Try again.'
+  } finally {
+    $('hook-create').disabled = false
+  }
+}
+
+async function testHook(id, btn) {
+  const label = btn.textContent
+  btn.disabled = true
+  btn.textContent = 'Sending…'
+  try {
+    const res = await fetch(`/api/webhooks/${encodeURIComponent(id)}/test`, { method: 'POST' })
+    const data = await res.json()
+    window.toast(
+      data.ok ? `Delivered, HTTP ${data.status}` : `Not delivered: ${data.error || 'HTTP ' + data.status}`,
+    )
+    await loadHooks()
+  } finally {
+    btn.disabled = false
+    btn.textContent = label
+  }
+}
+
+async function enableHook(id) {
+  await fetch(`/api/webhooks/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ active: true }),
+  })
+  await loadHooks()
+}
+
+async function dropHook(id) {
+  const hook = hooks.find((h) => h.id === id)
+  if (!confirm(`Remove ${hook?.url || 'this endpoint'}? We will stop sending to it.`)) return
+  await fetch(`/api/webhooks/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  await loadHooks()
+}
+
+$('new-hook').addEventListener('click', openHookModal)
+$('hook-create').addEventListener('click', createHook)
+$('hook-cancel').addEventListener('click', () => $('hook-modal').classList.remove('show'))
+$('hook-copy').addEventListener('click', () => {
+  navigator.clipboard?.writeText($('hook-secret').value).catch(() => {})
+  $('hook-copy').textContent = '✓'
+  setTimeout(() => ($('hook-copy').textContent = 'Copy'), 1200)
+})
+
 ;(async () => {
   const user = await window.shellReady
   if (!user) return
-  await load()
+  await Promise.all([load(), loadHooks()])
 })()

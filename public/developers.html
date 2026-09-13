@@ -75,6 +75,49 @@
 
           <section class="panel-card" style="margin-top:16px">
             <div class="panel-head">
+              <h2>Webhooks</h2>
+              <button id="new-hook" class="btn btn-sm">Add endpoint</button>
+            </div>
+            <p class="panel-sub">
+              We POST to your endpoint when something happens. Every delivery is signed, so your
+              server can tell a real one from a forgery. There is no per-click event on purpose:
+              click volume arrives as a daily summary instead, because an outbound request on the
+              redirect path would make your clicks as slow as your slowest server.
+            </p>
+            <div id="hooks"></div>
+          </section>
+
+          <div id="hook-modal" class="modal-backdrop">
+            <div class="modal modal-wide">
+              <h3 id="hook-modal-title">Add an endpoint</h3>
+              <div id="hook-form">
+                <label class="field-label" for="hook-url">Where should we POST?</label>
+                <input id="hook-url" class="mono" type="text" placeholder="https://yourapp.example/hooks/ashrt" />
+                <label class="field-label">Which events?</label>
+                <div id="hook-events" class="scope-list"></div>
+              </div>
+              <div id="hook-shown" hidden>
+                <p class="rules-note">
+                  This is the signing secret. Copy it now: like a key, it is shown once.
+                  Verify a delivery by computing
+                  <span class="mono">HMAC-SHA256(secret, "{timestamp}.{body}")</span> and comparing it
+                  with the <span class="mono">v1</span> value in <span class="mono">X-Ashrt-Signature</span>.
+                </p>
+                <div class="key-row">
+                  <input id="hook-secret" class="mono" type="text" readonly />
+                  <button id="hook-copy" class="copy">Copy</button>
+                </div>
+              </div>
+              <div id="hook-err" class="auth-err"></div>
+              <div class="modal-actions">
+                <button id="hook-cancel" class="btn btn-ghost">Cancel</button>
+                <button id="hook-create" class="btn">Add endpoint</button>
+              </div>
+            </div>
+          </div>
+
+          <section class="panel-card" style="margin-top:16px">
+            <div class="panel-head">
               <h2>Example request</h2>
               <div class="segment" id="lang">
                 <button data-lang="curl" class="active">curl</button>

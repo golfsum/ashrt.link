@@ -2,101 +2,76 @@
  * The pricing page renders from the server's own entitlements.
  *
  * Every number here is the number the API enforces, read from /api/plans at
- * load. A hand-written pricing table drifts from the code within a month, and
- * then the page is quietly lying about what someone is buying.
+ * load: the cards, the comparison table and the "in every plan" list are all
+ * derived from the same catalogue the server gates requests with. A
+ * hand-written pricing table drifts from the code within a month, and then the
+ * page is quietly lying about what somebody is buying.
  */
 
 const $ = (id) => document.getElementById(id)
 
-const num = (n) => Number(n).toLocaleString()
+async function render() {
+  const [data, user] = await Promise.all([Plans.load(), Plans.whoami()])
+  const opts = { user, interval: Plans.interval, data }
 
-/** null means unlimited: the API sends null rather than Infinity, which JSON has no word for. */
-const amount = (v, suffix = '') => (v === null ? 'Unlimited' : `${num(v)}${suffix}`)
+  $('plans').innerHTML =
+    Plans.toggleHtml(data) +
+    `<div class="price-grid">${data.plans.map((p) => Plans.card(p, opts)).join('')}</div>` +
+    `<p class="price-error" data-plan-error></p>`
 
-const FEATURE_LABELS = {
-  customAlias: 'Custom short codes',
-  campaigns: 'Campaigns',
-  utm: 'UTM builder',
-  tags: 'Tags',
-  brandedQr: 'QR design (colours, styles, logo)',
-  customDomains: 'Your own domain',
-  expiry: 'Link expiry',
+  $('universal').innerHTML = (data.universal || [])
+    .map((label) => `<li>${Plans.esc(label)}</li>`)
+    .join('')
+
+  $('matrix').innerHTML = `
+    <table class="compare">
+      <thead>
+        <tr>
+          <th scope="col">Feature</th>
+          ${data.plans.map((p) => `<th scope="col">${Plans.esc(p.label)}</th>`).join('')}
+        </tr>
+      </thead>
+      ${data.matrix
+        .map(
+          (group) => `<tbody>
+            <tr class="compare-group"><th scope="rowgroup" colspan="${data.plans.length + 1}">${Plans.esc(group.group)}</th></tr>
+            ${group.rows
+              .map(
+                (row) => `<tr>
+                  <th scope="row">${Plans.esc(row.label)}</th>
+                  ${data.plans
+                    .map((p) => {
+                      const v = row.values[p.id]
+                      const off = v === 'Not included' || v === 'None'
+                      return `<td class="${off ? 'compare-off' : ''}">${
+                        v === 'Included' ? '<span aria-label="Included">✓</span>' : Plans.esc(v)
+                      }</td>`
+                    })
+                    .join('')}
+                </tr>`,
+              )
+              .join('')}
+          </tbody>`,
+        )
+        .join('')}
+    </table>`
+
+  Plans.wire(document.body)
 }
 
-/** The order they are worth reading in, not the order the object happens to use. */
-const FEATURE_ORDER = [
-  'customDomains',
-  'brandedQr',
-  'expiry',
-  'customAlias',
-  'campaigns',
-  'utm',
-  'tags',
-]
+document.addEventListener('plans:interval', render)
 
-const BLURBS = {
-  free: 'Enough to run a real project on, not enough to see a screenshot.',
-  pro: 'Your own domain, designed QR codes, and room to stop counting.',
-  business: 'More domains, the largest allowance, and the highest API quota.',
-}
-
-function planCard(plan, { featured }) {
-  const limits = plan.limits || {}
-  const rows = [
-    ['New links', amount(limits.linksPerMonth, ' / 30 days')],
-    ['Links kept', amount(limits.links)],
-    ['Campaigns', amount(limits.campaigns)],
-    ['Custom domains', limits.domains ? num(limits.domains) : 'Not included'],
-    ['API calls', amount(limits.apiPerDay, ' / day')],
-  ]
-
-  const features = FEATURE_ORDER.filter((k) => k in (plan.features || {})).map((key) => {
-    const on = plan.features[key]
-    return `<li class="${on ? 'on' : 'off'}"><span aria-hidden="true">${on ? '✓' : '·'}</span> ${FEATURE_LABELS[key] || key}</li>`
-  })
-
-  return `<article class="price-card${featured ? ' price-card-featured' : ''}">
-      ${featured ? '<div class="price-tag">Most people start here</div>' : ''}
-      <h2>${plan.label}</h2>
-      <div class="price-amount">${plan.priceLabel}</div>
-      <p class="price-blurb">${BLURBS[plan.id] || ''}</p>
-      <a class="btn ${featured ? '' : 'btn-ghost'} price-cta" href="${plan.id === 'free' ? '/signup' : '/account'}">
-        ${plan.id === 'free' ? 'Start free' : `Choose ${plan.label}`}
-      </a>
-      <dl class="price-limits">
-        ${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}
-      </dl>
-      <ul class="price-features">${features.join('')}</ul>
-    </article>`
-}
-
-async function load() {
-  let plans = []
-  try {
-    const res = await fetch('/api/plans')
-    plans = (await res.json()).plans || []
-  } catch {
-    $('plans').innerHTML =
-      '<p class="chart-empty">Could not load the plans just now. Reload, or see them on the <a href="/account">account page</a>.</p>'
-    return
-  }
-
-  $('plans').innerHTML = plans.map((p) => planCard(p, { featured: p.id === 'pro' })).join('')
-}
+render().catch(() => {
+  $('plans').innerHTML =
+    '<p class="chart-empty">Could not load the plans just now. Reload, or see them on the <a href="/account">account page</a>.</p>'
+})
 
 /** The same nav the other public pages use. */
 async function nav() {
-  let user = null
-  try {
-    const res = await fetch('/auth/me')
-    if (res.ok) user = (await res.json()).user
-  } catch {
-    /* anonymous is the normal case here */
-  }
+  const user = await Plans.whoami()
   $('nav').innerHTML = user
     ? '<a href="/dashboard">Dashboard</a><a href="/account">Account</a>'
     : '<a href="/login">Log in</a><a class="btn btn-sm" href="/signup">Get started</a>'
 }
 
-load()
 nav()

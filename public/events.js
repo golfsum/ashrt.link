@@ -54,9 +54,12 @@ window.Track = (function () {
   window.Track.onFirstUse(document.getElementById('url'), 'tracker_started')
   window.Track.onFirstUse(document.getElementById('quick-url'), 'tracker_started')
 
-  for (const id of ['pro-btn', 'biz-btn']) {
-    document.getElementById(id)?.addEventListener('click', () => window.Track.send('upgrade_clicked'))
-  }
+  // Plan buttons are rendered from /api/plans after this file runs, so the
+  // listener is on the document rather than on elements that do not exist yet.
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest?.('[data-plan-action="checkout"], .price-cta[href^="/signup?plan="]')
+    if (btn) window.Track.send('upgrade_clicked')
+  })
 
   // The signup form being started, as distinct from the page being viewed.
   const form = document.getElementById('form')

@@ -29,16 +29,33 @@
             <div class="set-row"><label>Plan</label><div><span id="plan" class="plan-tag">Free</span></div></div>
           </section>
 
+          <div id="billing-banner" class="notice" hidden></div>
+
           <section class="panel-card" style="margin-top:16px">
-            <div class="panel-head"><h2>Plan &amp; billing</h2></div>
+            <div class="panel-head">
+              <h2>This period</h2>
+              <button id="manage" class="btn btn-sm btn-ghost" hidden>Manage subscription</button>
+            </div>
             <p id="billing-note" class="panel-sub"></p>
-            <div id="plan-options" class="plan-options"></div>
+            <div id="usage" class="usage-grid"></div>
+          </section>
+
+          <section class="panel-card" style="margin-top:16px">
+            <div class="panel-head"><h2>Plans</h2></div>
+            <p class="panel-sub">
+              Changing plan never removes anything you have already made: your links keep
+              redirecting, your QR codes keep resolving and your history is kept.
+              <a href="/pricing">See the full comparison</a>.
+            </p>
+            <div id="plan-options"></div>
+            <p class="price-error" data-plan-error></p>
           </section>
         </div>
       </main>
     </div>
 
     <script src="/shell.js"></script>
+    <script src="/plans-ui.js"></script>
     <script src="/account.js"></script>
   </body>
 </html>

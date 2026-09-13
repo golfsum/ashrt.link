@@ -209,11 +209,21 @@ test('the check endpoint is not open to whoever finds it', async () => {
   )
 })
 
+
+/**
+ * Monitoring is a paid feature, so these tests run as a paying account. The
+ * free-plan refusal has its own test at the bottom.
+ */
+async function paidCookie(email, plan = 'pro') {
+  const reg = await request(app).post('/auth/register').send({ email, password: 'a-good-password' })
+  const user = await users.getByEmail(email)
+  user.plan = plan
+  await users.update(user)
+  return reg.headers['set-cookie']
+}
+
 test('the report separates "nothing broken" from "nothing checked yet"', async () => {
-  const reg = await request(app)
-    .post('/auth/register')
-    .send({ email: 'health1@example.com', password: 'a-good-password' })
-  const cookie = reg.headers['set-cookie']
+  const cookie = await paidCookie('health1@example.com')
   await request(app).post('/api/links').set('Cookie', cookie).send({ url: 'example.com/unchecked' })
 
   const res = await request(app).get('/api/links/health').set('Cookie', cookie)
@@ -223,10 +233,7 @@ test('the report separates "nothing broken" from "nothing checked yet"', async (
 })
 
 test('a broken destination reaches its owner with what they need to fix it', async () => {
-  const reg = await request(app)
-    .post('/auth/register')
-    .send({ email: 'health2@example.com', password: 'a-good-password' })
-  const cookie = reg.headers['set-cookie']
+  const cookie = await paidCookie('health2@example.com')
   const made = await request(app).post('/api/links').set('Cookie', cookie).send({ url: 'example.com/will-break' })
 
   // Two failed checks, the way the scheduler would record them.
@@ -246,23 +253,30 @@ test('a broken destination reaches its owner with what they need to fix it', asy
 })
 
 test('health is reported to the owner and to nobody else', async () => {
-  const mine = await request(app)
-    .post('/auth/register')
-    .send({ email: 'health3@example.com', password: 'a-good-password' })
-  const theirs = await request(app)
-    .post('/auth/register')
-    .send({ email: 'health4@example.com', password: 'a-good-password' })
+  const mineCookie = await paidCookie('health3@example.com')
+  const theirsCookie = await paidCookie('health4@example.com')
 
   const made = await request(app)
     .post('/api/links')
-    .set('Cookie', mine.headers['set-cookie'])
+    .set('Cookie', mineCookie)
     .send({ url: 'example.com/private-break' })
   const link = await store.get(made.body.slug)
   link.health = applyResult(link, { status: 'server_error', code: 500 })
   link.health = applyResult(link, { status: 'server_error', code: 500 })
   await store.add(link)
 
-  const other = await request(app).get('/api/links/health').set('Cookie', theirs.headers['set-cookie'])
+  const other = await request(app).get('/api/links/health').set('Cookie', theirsCookie)
   assert.deepEqual(other.body.broken, [])
   assert.equal((await request(app).get('/api/links/health')).status, 401)
+})
+
+test('monitoring is refused on the free plan, and refused server-side', async () => {
+  const reg = await request(app)
+    .post('/auth/register')
+    .send({ email: 'health-free@example.com', password: 'a-good-password' })
+  const cookie = reg.headers['set-cookie']
+  const res = await request(app).get('/api/links/health').set('Cookie', cookie)
+  assert.equal(res.status, 402)
+  assert.equal(res.body.needsUpgrade, true)
+  assert.equal(res.body.upgradeTo, 'pro')
 })

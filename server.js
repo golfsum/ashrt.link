@@ -29,14 +29,49 @@ import {
   authUrl,
   fetchProfile,
 } from './auth.js'
-import { billingEnabled, planAvailable, createCheckoutUrl, createPortalUrl, parseWebhook } from './billing.js'
-import { PAID_PLANS, limitFor, can, requireFeature, isPaid, publicPlans, planIdOf } from './lib/plans.js'
+import {
+  billingEnabled,
+  planAvailable,
+  availability as billingAvailability,
+  createCheckoutUrl,
+  createPortalUrl,
+  parseWebhook,
+  planForPrice,
+  monthlyPrice,
+} from './billing.js'
+import {
+  PAID_PLANS,
+  PLAN_IDS,
+  PLANS,
+  limitFor,
+  can,
+  requireFeature,
+  requireHeadroom,
+  isPaid,
+  publicPlans,
+  publicMatrix,
+  universalFeatures,
+  planIdOf,
+  priceOf,
+} from './lib/plans.js'
 import { validateUrl, checkStored, applyUtm, registrableDomain } from './lib/urls.js'
-import { hit, limit, clientId, clientIp, hashClient } from './lib/ratelimit.js'
+import { hit, limit, usage as budgetUsage, clientId, clientIp, hashClient } from './lib/ratelimit.js'
 import { classifyRequest } from './lib/bots.js'
 import { checkIntegrity, applyFixes } from './lib/integrity.js'
 import { sanitizeRules, resolveDestination, ruleLabel, RULE_TYPES, MAX_RULES } from './lib/routing.js'
 import { dueLinks, checkUrl, applyResult, isBroken, HEALTH_STATES } from './lib/health.js'
+import {
+  EVENTS as WEBHOOK_EVENTS,
+  EVENT_NAMES as WEBHOOK_EVENT_NAMES,
+  MAX_ENDPOINTS as MAX_WEBHOOKS,
+  FAILURES_BEFORE_DISABLE,
+  newSecret as newWebhookSecret,
+  publicEndpoint,
+  subscribers,
+  buildDelivery,
+  deliver as deliverWebhook,
+  nextAttemptAt,
+} from './lib/webhooks.js'
 import {
   SCOPES,
   ALL_SCOPES,
@@ -207,10 +242,13 @@ app.post('/api/billing/webhook', express.raw({ type: '*/*' }), async (req, res) 
       const s = event.data.object
       const user = await users.getById(s.client_reference_id)
       if (user) {
-        user.plan = s.metadata?.plan || 'pro'
+        const named = s.metadata?.plan
+        user.plan = PAID_PLANS.includes(named) ? named : 'pro'
+        user.billingInterval = s.metadata?.interval === 'annual' ? 'annual' : 'monthly'
         user.stripeCustomerId = s.customer || user.stripeCustomerId
         user.subscriptionId = s.subscription || user.subscriptionId
         user.subscriptionStatus = 'active'
+        user.planSince = Date.now()
         await users.update(user)
         // Attributed to where the account originally came from, which is what
         // makes the whole funnel add up to revenue rather than stopping at
@@ -221,8 +259,13 @@ app.post('/api/billing/webhook', express.raw({ type: '*/*' }), async (req, res) 
       const sub = event.data.object
       const user = await users.getByStripe(sub.customer)
       if (user) {
+        // Down to Free, and nothing else: their links, QR codes, campaigns,
+        // domains and history all stay exactly where they are. A cancellation
+        // stops new paid capacity, it does not delete what somebody made.
         user.plan = 'free'
+        user.billingInterval = null
         user.subscriptionStatus = 'canceled'
+        user.planSince = Date.now()
         await users.update(user)
       }
     } else if (event.type === 'customer.subscription.updated') {
@@ -230,8 +273,16 @@ app.post('/api/billing/webhook', express.raw({ type: '*/*' }), async (req, res) 
       const user = await users.getByStripe(sub.customer)
       if (user) {
         const active = ['active', 'trialing'].includes(sub.status)
-        user.plan = active ? sub.metadata?.plan || user.plan || 'pro' : 'free'
+        // The price on the subscription is what Stripe is charging, so it wins
+        // over our own metadata: a plan changed inside the Stripe dashboard
+        // still lands correctly here.
+        const priced = planForPrice(sub.items?.data?.[0]?.price?.id)
+        const named = priced?.plan || sub.metadata?.plan
+        const before = user.plan
+        user.plan = active ? (PAID_PLANS.includes(named) ? named : user.plan || 'pro') : 'free'
+        user.billingInterval = active ? priced?.interval || sub.metadata?.interval || user.billingInterval || 'monthly' : null
         user.subscriptionStatus = sub.status
+        if (user.plan !== before) user.planSince = Date.now()
         await users.update(user)
       }
     } else if (event.type === 'invoice.payment_failed') {
@@ -427,12 +478,21 @@ function recentClicks(link) {
  * entries is enough to answer "what did this used to be" and to undo a mistake,
  * without letting one record grow unbounded.
  */
-const HISTORY_LIMIT = 10
+/**
+ * The longest history any plan keeps. Records are trimmed to this on write and
+ * then shown to the plan's own depth on read, so upgrading reveals history that
+ * was already there rather than starting the record over.
+ */
+const HISTORY_CAP = Math.max(...PLAN_IDS.map((id) => PLANS[id].limits.destinationHistory))
+
+/** How far back this particular account may roll a destination. */
+const historyDepth = (user) => Math.max(0, limitFor(user, 'destinationHistory'))
+
 function recordDestinationChange(link, nextUrl, by) {
   if (!link.url || link.url === nextUrl) return
   link.history = [{ url: link.url, changedAt: Date.now(), by: by || null }, ...(link.history || [])].slice(
     0,
-    HISTORY_LIMIT,
+    HISTORY_CAP,
   )
 }
 
@@ -450,13 +510,19 @@ function publicLink(l, { admin = false, user = null } = {}) {
     botClicks: l.botClicks || 0,
     createdAt: l.createdAt,
     expiresAt: l.expiresAt || null,
+    startsAt: l.startsAt || null,
     lastClickAt: l.lastClickAt || null,
     guest: Boolean(l.guest),
   }
   // The owner (and an admin) can see where this link used to point, and how
   // much traffic it has been getting, so changing it is an informed decision.
   if (admin || (user && l.owner === user.id)) {
-    out.history = (l.history || []).slice(0, HISTORY_LIMIT)
+    const depth = admin ? HISTORY_CAP : historyDepth(user)
+    out.history = (l.history || []).slice(0, depth)
+    // What a deeper plan would show, so the UI can say what is behind the
+    // upgrade without inventing a number.
+    out.historyKept = (l.history || []).length
+    out.historyDepth = depth
     out.recentClicks = recentClicks(l)
     out.recentDays = RECENT_DAYS
     // Scans of this link's QR code, which are clicks that arrived with our
@@ -502,6 +568,10 @@ function safeUser(u, { key = false } = {}) {
     role: isAdmin(u) ? 'admin' : 'user',
     status: u.status || 'active',
     createdAt: u.createdAt,
+    // Billing state, so the account page can say what is happening without a
+    // second request. None of it is sensitive: no customer id, no card.
+    subscriptionStatus: u.subscriptionStatus || null,
+    billingInterval: u.billingInterval || null,
   }
   // The plaintext key is deliberately not here. Keys are hashed at rest and
   // shown once at creation; the one exception is an account that predates that,
@@ -719,6 +789,191 @@ function touchKey(req) {
 app.use('/api', (req, res, next) => {
   if (req.authMethod === 'apikey') touchKey(req)
   next()
+})
+
+/* -------------------------------- webhooks -------------------------------- */
+
+/**
+ * Tell somebody else's server when something happens.
+ *
+ * There is no per-click webhook, on purpose. A click is a 302 that takes a few
+ * milliseconds; hanging an outbound request off it would make the fastest part
+ * of the product depend on the slowest subscriber. Click volume goes out as a
+ * periodic summary from the scheduled job instead.
+ */
+
+/** A webhook URL is somewhere we make requests to, so it is checked like one. */
+async function validateWebhookUrl(url) {
+  const checked = validateUrl(url, { blocked: await blockedDomains(), selfHost: SELF_HOST })
+  if (!checked.ok) return { ok: false, error: checked.error }
+  if (!checked.url.startsWith('https://')) {
+    return { ok: false, error: 'Use an https endpoint: a signed payload over plain http is not private.' }
+  }
+  return { ok: true, url: checked.url }
+}
+
+/**
+ * Fire an event at whoever asked for it.
+ *
+ * Never awaited by the request that triggered it, and never able to fail it. A
+ * delivery that does not land is queued for the scheduler to retry.
+ */
+function fireWebhooks(user, event, data) {
+  const targets = subscribers(user, event)
+  if (!targets.length) return
+
+  const delivery = buildDelivery(event, data)
+  const blockedPromise = blockedDomains()
+
+  // Detached on purpose: the caller has already answered, or is about to.
+  ;(async () => {
+    const blocked = await blockedPromise
+    const validate = (url) => validateUrl(url, { blocked, selfHost: SELF_HOST })
+    for (const endpoint of targets) {
+      const result = await deliverWebhook(endpoint, delivery, { validate })
+      await recordDelivery(user, endpoint, delivery, result)
+    }
+  })().catch(() => {})
+}
+
+/** Update an endpoint's state after an attempt, and queue a retry if needed. */
+async function recordDelivery(user, endpoint, delivery, result, attempt = 0) {
+  const fresh = await users.getById(user.id).catch(() => null)
+  if (!fresh) return
+  const target = (fresh.webhooks || []).find((e) => e.id === endpoint.id)
+  if (!target) return
+
+  target.lastDeliveryAt = Date.now()
+  target.lastStatus = result.status || 0
+
+  if (result.ok) {
+    target.failures = 0
+  } else {
+    target.failures = (target.failures || 0) + 1
+    // An endpoint that has failed this many times in a row is not coming back
+    // on its own, and continuing to call it is rude to whoever now owns that
+    // address. It is switched off with a reason rather than hammered.
+    if (target.failures >= FAILURES_BEFORE_DISABLE) {
+      target.active = false
+      target.disabledReason = `Switched off after ${target.failures} failed deliveries in a row.`
+    } else if (!result.permanent) {
+      const at = nextAttemptAt(attempt)
+      if (at) {
+        await store.queueDelivery({
+          userId: fresh.id,
+          endpointId: target.id,
+          delivery,
+          attempt: attempt + 1,
+          at,
+        })
+      }
+    }
+  }
+  await users.update(fresh).catch(() => {})
+}
+
+app.get('/api/webhooks', requireUser, (req, res) => {
+  res.json({
+    webhooks: (req.user.webhooks || []).map(publicEndpoint),
+    events: WEBHOOK_EVENTS,
+    entitled: can(req.user, 'webhooks'),
+    max: MAX_WEBHOOKS,
+  })
+})
+
+app.post('/api/webhooks', requireUser, async (req, res) => {
+  const deny = requireFeature(req.user, 'webhooks', 'Webhooks')
+  if (deny) return res.status(deny.status).json(deny.body)
+
+  if ((req.user.webhooks || []).length >= MAX_WEBHOOKS) {
+    return res.status(400).json({ error: `An account can have ${MAX_WEBHOOKS} endpoints.` })
+  }
+
+  const checked = await validateWebhookUrl(req.body?.url)
+  if (!checked.ok) return res.status(400).json({ error: checked.error })
+
+  const events = (Array.isArray(req.body?.events) ? req.body.events : []).filter((e) =>
+    WEBHOOK_EVENT_NAMES.includes(e),
+  )
+  if (!events.length) return res.status(400).json({ error: 'Choose at least one event to send.' })
+
+  const secret = newWebhookSecret()
+  const endpoint = {
+    id: crypto.randomBytes(6).toString('base64url'),
+    url: checked.url,
+    secret,
+    events,
+    active: true,
+    createdAt: Date.now(),
+    failures: 0,
+  }
+  req.user.webhooks = [...(req.user.webhooks || []), endpoint]
+  await users.update(req.user)
+
+  // The secret is shown once, like a key: it is what proves a delivery came
+  // from us, and we have no reason to hand it back later.
+  res.json({ webhook: publicEndpoint(endpoint), secret })
+})
+
+app.patch('/api/webhooks/:id', requireUser, async (req, res) => {
+  const endpoint = (req.user.webhooks || []).find((e) => e.id === req.params.id)
+  if (!endpoint) return res.status(404).json({ error: 'No such endpoint' })
+
+  if (req.body?.url !== undefined) {
+    const checked = await validateWebhookUrl(req.body.url)
+    if (!checked.ok) return res.status(400).json({ error: checked.error })
+    endpoint.url = checked.url
+  }
+  if (Array.isArray(req.body?.events)) {
+    const events = req.body.events.filter((e) => WEBHOOK_EVENT_NAMES.includes(e))
+    if (!events.length) return res.status(400).json({ error: 'Choose at least one event to send.' })
+    endpoint.events = events
+  }
+  if (req.body?.active !== undefined) {
+    endpoint.active = Boolean(req.body.active)
+    // Turning it back on is also a statement that the address works again.
+    if (endpoint.active) {
+      endpoint.failures = 0
+      endpoint.disabledReason = null
+    }
+  }
+
+  await users.update(req.user)
+  res.json({ webhook: publicEndpoint(endpoint) })
+})
+
+app.delete('/api/webhooks/:id', requireUser, async (req, res) => {
+  req.user.webhooks = (req.user.webhooks || []).filter((e) => e.id !== req.params.id)
+  await users.update(req.user)
+  res.json({ ok: true })
+})
+
+/** Send a real, signed delivery so somebody can check their receiver works. */
+app.post('/api/webhooks/:id/test', requireUser, async (req, res) => {
+  const endpoint = (req.user.webhooks || []).find((e) => e.id === req.params.id)
+  if (!endpoint) return res.status(404).json({ error: 'No such endpoint' })
+
+  const blocked = await blockedDomains()
+  const delivery = buildDelivery('link.created', {
+    test: true,
+    slug: 'example',
+    shortUrl: shortUrlFor('example', req.user),
+    url: 'https://example.com/a-test-delivery',
+  })
+  const result = await deliverWebhook(endpoint, delivery, {
+    validate: (url) => validateUrl(url, { blocked, selfHost: SELF_HOST }),
+  })
+
+  endpoint.lastDeliveryAt = Date.now()
+  endpoint.lastStatus = result.status || 0
+  await users.update(req.user)
+
+  res.json({
+    ok: result.ok,
+    status: result.status,
+    error: result.error || null,
+    deliveryId: delivery.id,
+  })
 })
 
 /* -------------------------------- API keys -------------------------------- */
@@ -947,9 +1202,8 @@ app.post('/api/domains', requireUser, async (req, res) => {
   if (hostMatchesSelf(domain)) return res.status(400).json({ error: 'That is already our domain' })
 
   req.user.domains = req.user.domains || []
-  if (req.user.domains.length >= limitFor(req.user, 'domains')) {
-    return res.status(402).json({ error: 'Domain limit reached for your plan', needsUpgrade: true })
-  }
+  const full = requireHeadroom(req.user, 'domains', req.user.domains.length, { noun: 'domains' })
+  if (full) return res.status(full.status).json(full.body)
   if (req.user.domains.some((d) => d.domain === domain)) return res.status(409).json({ error: 'Domain already added' })
 
   // One account per domain, first to verify. Adding it here only reserves it;
@@ -1001,6 +1255,7 @@ app.post('/api/domains/:domain/verify', requireUser, async (req, res) => {
     if (!entry.verifiedAt) {
       entry.verifiedAt = Date.now()
       await audit({ actor: req.user, action: 'domain.verified', targetType: 'domain', targetId: domain })
+      fireWebhooks(req.user, 'domain.verified', { domain, state: result.state })
     }
   } else if (entry.verifiedAt) {
     // It used to work and no longer does. Stop serving it rather than leaving a
@@ -1073,19 +1328,31 @@ app.get('/api/billing/status', (req, res) => {
   res.json({
     enabled: billingEnabled(),
     plan: planIdOf(req.user),
+    interval: req.user?.billingInterval || null,
     subscriptionStatus: req.user?.subscriptionStatus || null,
+    manageable: Boolean(req.user?.stripeCustomerId),
     plans: publicPlans(),
+    matrix: publicMatrix(),
     freeLimit: limitFor({ plan: 'free' }, 'links'),
-    available: { pro: planAvailable('pro'), business: planAvailable('business') },
+    // Per plan and per interval: a button for something Stripe has no price for
+    // must say so rather than opening a checkout that throws.
+    available: billingAvailability(),
   })
 })
 
 app.post('/api/billing/checkout', requireUser, async (req, res) => {
   const plan = PAID_PLANS.includes(req.body?.plan) ? req.body.plan : 'pro'
-  if (!planAvailable(plan)) return res.status(503).json({ error: `The ${plan} plan isn't set up yet` })
-  if (planIdOf(req.user) === plan) return res.status(400).json({ error: `You're already on ${plan}` })
+  const interval = req.body?.interval === 'annual' ? 'annual' : 'monthly'
+  if (!planAvailable(plan, interval)) {
+    return res.status(503).json({ error: `${plan} is not set up for ${interval} billing yet` })
+  }
+  // Changing interval on the same plan is a real request and belongs in the
+  // portal, not a second subscription, so only a different plan starts here.
+  if (planIdOf(req.user) === plan) {
+    return res.status(400).json({ error: `You are already on ${plan}. Manage billing to change how you pay.` })
+  }
   try {
-    const url = await createCheckoutUrl(req.user, BASE_URL, plan)
+    const url = await createCheckoutUrl(req.user, BASE_URL, plan, interval)
     trackAsync('checkout_started')
     res.json({ url })
   } catch (err) {
@@ -1128,9 +1395,8 @@ app.post('/api/campaigns', requireUser, async (req, res) => {
   const name = String(req.body?.name || '').trim().slice(0, 120)
   if (!name) return res.status(400).json({ error: 'Name your campaign' })
   const existing = await campaigns.byOwner(req.user.id)
-  if (existing.length >= limitFor(req.user, 'campaigns')) {
-    return res.status(402).json({ error: 'Campaign limit reached for your plan', needsUpgrade: true })
-  }
+  const full = requireHeadroom(req.user, 'campaigns', existing.length, { noun: 'campaigns' })
+  if (full) return res.status(full.status).json(full.body)
   const camp = {
     id: 'c_' + crypto.randomBytes(6).toString('base64url'),
     owner: req.user.id,
@@ -1176,13 +1442,72 @@ app.get('/api/usage', requireUser, async (req, res) => {
   })
 })
 
+/**
+ * Everything this account has used, against what its plan allows.
+ *
+ * One endpoint, because the answer has to be consistent: the number on the
+ * billing page, the number in the header and the number in the "you have two
+ * left" warning are the same number, read from the same counters the server
+ * enforces with. Reading it never spends any of it.
+ */
+app.get('/api/usage/summary', requireUser, async (req, res) => {
+  const plan = planIdOf(req.user)
+  const [links, qr, ownLinks, camps] = await Promise.all([
+    budgetUsage('create:user:month', req.user.id, { user: req.user }),
+    budgetUsage('qr:month', req.user.id, { user: req.user }),
+    store.byOwner(req.user.id),
+    campaigns.byOwner(req.user.id),
+  ])
+  const apiByDay = await apiUsage.byDay(req.user.id)
+  const apiLimit = limitFor(req.user, 'apiPerDay')
+  const finite = (v) => (Number.isFinite(v) ? v : null)
+
+  res.json({
+    plan,
+    planLabel: PLANS[plan].label,
+    interval: req.user.billingInterval || null,
+    subscriptionStatus: req.user.subscriptionStatus || null,
+    price: priceOf(plan),
+    // Per-period budgets, with when they refill. "Reset in 12 days" is only
+    // honest if it comes from the same window the limiter uses.
+    links: { used: links.used, limit: links.limit, resetAt: links.resetAt },
+    qrDownloads: { used: qr.used, limit: qr.limit, resetAt: qr.resetAt },
+    api: { used: apiByDay[new Date().toISOString().slice(0, 10)] || 0, limit: finite(apiLimit) },
+    // Standing totals, which do not reset.
+    campaigns: { used: camps.length, limit: finite(limitFor(req.user, 'campaigns')) },
+    domains: { used: (req.user.domains || []).length, limit: finite(limitFor(req.user, 'domains')) },
+    // Not a limit: links already made keep working on every plan, and this is
+    // here so the page can say so with a real number.
+    linksKept: ownLinks.length,
+    analyticsDays: finite(limitFor(req.user, 'analyticsDays')),
+    // What this plan includes, so a page can skip asking for something it is
+    // not entitled to rather than asking and handling the refusal.
+    features: publicPlans().find((p) => p.id === plan)?.features || {},
+    nextPlan: PLAN_IDS[PLAN_IDS.indexOf(plan) + 1] || null,
+  })
+})
+
 /* ================================== links ================================= */
 
 app.get('/api/health', async (_req, res) =>
   res.json({ ok: true, store: store.driver, providers: oauthEnabled() }),
 )
 
-app.get('/api/plans', (_req, res) => res.json({ plans: publicPlans() }))
+/**
+ * The plan catalogue, for every page that shows pricing.
+ *
+ * Public and uncached-by-plan on purpose: the pricing page, the homepage and
+ * the account page all render from this one response, so a price can only ever
+ * be wrong in one place rather than three.
+ */
+app.get('/api/plans', (_req, res) =>
+  res.json({
+    plans: publicPlans(),
+    matrix: publicMatrix(),
+    universal: universalFeatures(),
+    available: billingAvailability(),
+  }),
+)
 
 /** Public config the marketing pages need, so nothing is hardcoded in HTML. */
 app.get('/api/config', (_req, res) =>
@@ -1254,10 +1579,18 @@ app.post('/api/links', requireScope('links:write'), async (req, res) => {
     // and telling someone to "try again shortly" when they need a bigger plan
     // wastes their afternoon.
     if (name === 'create:user:month') {
+      const next = PLAN_IDS[PLAN_IDS.indexOf(planIdOf(user)) + 1]
+      const up = next ? PLANS[next] : null
       return res.status(402).json({
-        error: `You have created ${r.limit} links in the last 30 days, which is this plan's allowance. Upgrade to keep going.`,
-        needsUpgrade: true,
+        error: `You have created ${r.limit} of ${r.limit} links this period.${
+          up
+            ? ` ${up.label} (${priceOf(next).label}) includes ${up.limits.linksPerMonth.toLocaleString('en-US')} a month.`
+            : ''
+        } Every link you have already made keeps working.`,
+        needsUpgrade: Boolean(up),
+        upgradeTo: next || null,
         limit: r.limit,
+        used: r.count,
         resetAt: r.resetAt,
       })
     }
@@ -1324,6 +1657,8 @@ app.post('/api/links', requireScope('links:write'), async (req, res) => {
     })
   }
 
+  if (user) fireWebhooks(user, 'link.created', publicLink(link, { user }))
+
   const out = publicLink(link, { user })
   if (guestToken) {
     out.manageToken = guestToken
@@ -1347,7 +1682,8 @@ app.post('/api/links', requireScope('links:write'), async (req, res) => {
  * row: everything past the limit comes back marked, so it can be re-run after
  * an upgrade without creating anything twice.
  */
-const MAX_BULK_ROWS = 250
+/** The largest import any plan allows, and the hard ceiling on one request. */
+const MAX_BULK_ROWS = Math.max(...PLAN_IDS.map((id) => PLANS[id].limits.bulkRows))
 
 app.post('/api/links/bulk', requireUser, requireScope('links:write'), async (req, res) => {
   const deny = requireFeature(req.user, 'bulkCreate', 'Bulk creation')
@@ -1356,8 +1692,15 @@ app.post('/api/links/bulk', requireUser, requireScope('links:write'), async (req
   const rows = Array.isArray(req.body?.rows) ? req.body.rows : null
   if (!rows) return res.status(400).json({ error: 'Send a list of rows.' })
   if (!rows.length) return res.status(400).json({ error: 'There is nothing in that file.' })
-  if (rows.length > MAX_BULK_ROWS) {
-    return res.status(400).json({ error: `That is ${rows.length} rows. Import at most ${MAX_BULK_ROWS} at a time.` })
+  const rowCap = Math.min(limitFor(req.user, 'bulkRows'), MAX_BULK_ROWS)
+  if (rows.length > rowCap) {
+    const bigger = PLAN_IDS.find((id) => PLANS[id].limits.bulkRows > rowCap)
+    return res.status(bigger ? 402 : 400).json({
+      error: `That is ${rows.length} rows. Your plan imports ${rowCap} at a time${
+        bigger ? `; ${PLANS[bigger].label} imports ${PLANS[bigger].limits.bulkRows}` : ''
+      }.`,
+      ...(bigger ? { needsUpgrade: true, upgradeTo: bigger } : {}),
+    })
   }
 
   const dryRun = Boolean(req.body?.dryRun)
@@ -1564,7 +1907,7 @@ app.patch('/api/links/:slug', requireUser, requireScope('links:write'), async (r
     const deny = requireFeature(req.user, 'smartRouting', 'Smart routing')
     if (deny) return res.status(deny.status).json(deny.body)
 
-    const { rules, errors } = sanitizeRules(req.body.rules)
+    const { rules, errors } = sanitizeRules(req.body.rules, { max: limitFor(req.user, 'routingRules') })
     if (errors.length) return res.status(400).json({ error: errors[0], errors })
 
     // Every rule destination goes through the same validation as the link's
@@ -1585,6 +1928,20 @@ app.patch('/api/links/:slug', requireUser, requireScope('links:write'), async (r
     if (deny) return res.status(deny.status).json(deny.body)
     link.expiresAt = req.body.expiresAt ? Number(req.body.expiresAt) : null
   }
+
+  // A go-live date. The link exists and its QR code can be printed today; it
+  // starts forwarding at the time you set, which is the whole point of putting
+  // a short link on something before the thing it points at is ready.
+  if (req.body?.startsAt !== undefined) {
+    const deny = requireFeature(req.user, 'scheduling', 'Scheduled go-live')
+    if (deny) return res.status(deny.status).json(deny.body)
+    const when = req.body.startsAt ? Number(req.body.startsAt) : null
+    if (when && !Number.isFinite(when)) return res.status(400).json({ error: 'That is not a date.' })
+    if (when && link.expiresAt && when >= link.expiresAt) {
+      return res.status(400).json({ error: 'A link cannot start after it expires.' })
+    }
+    link.startsAt = when
+  }
   // A user may re-enable their own link, but never clear an admin flag.
   if (req.body?.status !== undefined && ['active', 'disabled'].includes(req.body.status)) {
     if (link.status !== 'flagged' && !link.disabledBy) link.status = req.body.status
@@ -1592,6 +1949,7 @@ app.patch('/api/links/:slug', requireUser, requireScope('links:write'), async (r
 
   await store.add(link)
   await store.logActivity(req.user.id, { type: 'edited', slug: link.slug, at: Date.now() })
+  fireWebhooks(req.user, 'link.updated', publicLink(link, { user: req.user }))
   res.json(publicLink(link, { user: req.user }))
 })
 
@@ -1609,8 +1967,22 @@ app.post('/api/links/:slug/revert', requireUser, requireScope('links:write'), as
   if (link.owner !== req.user.id) return res.status(403).json({ error: 'Not your link' })
 
   const at = Number(req.body?.changedAt)
-  const entry = (link.history || []).find((h) => h.changedAt === at)
-  if (!entry) return res.status(404).json({ error: 'That version is no longer in the history' })
+  // Only as far back as the plan goes. The record may hold more — an account
+  // that upgrades gets the rest of it — but the API cannot reach past the
+  // depth the plan sells, and this is the check that makes that true.
+  const reachable = (link.history || []).slice(0, historyDepth(req.user))
+  const entry = reachable.find((h) => h.changedAt === at)
+  if (!entry) {
+    const deeper = (link.history || []).some((h) => h.changedAt === at)
+    if (deeper) {
+      return res.status(402).json({
+        error: `Your plan rolls back the last ${historyDepth(req.user)} destinations. Pro keeps ${PLANS.pro.limits.destinationHistory}.`,
+        needsUpgrade: true,
+        upgradeTo: 'pro',
+      })
+    }
+    return res.status(404).json({ error: 'That version is no longer in the history' })
+  }
 
   const checked = validateUrl(entry.url, { blocked: await blockedDomains() })
   if (!checked.ok) {
@@ -1629,7 +2001,16 @@ app.get('/api/links/:slug/stats', requireUser, requireScope('analytics:read'), a
   if (!link) return res.status(404).json({ error: 'Link not found' })
   if (link.owner !== req.user.id) return res.status(403).json({ error: 'Not your link' })
   const summary = await store.linkSummary(req.params.slug)
-  res.json({ ...summary, shortUrl: shortUrlFor(req.params.slug, req.user) })
+  const cutoff = retentionCutoff(req.user)
+  res.json({
+    ...summary,
+    series: withinRetention(summary.series, cutoff),
+    botSeries: withinRetention(summary.botSeries, cutoff),
+    analyticsDays: Number.isFinite(limitFor(req.user, 'analyticsDays'))
+      ? limitFor(req.user, 'analyticsDays')
+      : null,
+    shortUrl: shortUrlFor(req.params.slug, req.user),
+  })
 })
 
 app.delete('/api/links/:slug', requireUser, requireScope('links:write'), async (req, res) => {
@@ -1638,13 +2019,48 @@ app.delete('/api/links/:slug', requireUser, requireScope('links:write'), async (
   if (link.owner !== req.user.id) return res.status(403).json({ error: 'Not your link' })
   await store.remove(req.params.slug)
   await store.logActivity(req.user.id, { type: 'deleted', slug: req.params.slug, at: Date.now() })
+  fireWebhooks(req.user, 'link.deleted', { slug: req.params.slug, url: link.url })
   res.json({ ok: true })
 })
+
+
+/* ---------------------------- analytics retention ------------------------- */
+
+/**
+ * How far back a plan can look.
+ *
+ * Only the day-by-day series is windowed. Lifetime totals, unique visitors and
+ * the dimension breakdowns stay whole, because a total that quietly shrank when
+ * somebody's history aged out would be a wrong number rather than a smaller
+ * one. Nothing is deleted here either: the record keeps what it keeps, and a
+ * longer plan shows more of it the day it is bought.
+ */
+function retentionCutoff(user) {
+  const days = limitFor(user, 'analyticsDays')
+  if (!Number.isFinite(days)) return null
+  return new Date(Date.now() - days * 86400000).toISOString().slice(0, 10)
+}
+
+/** Trim a { 'YYYY-MM-DD': n } map to what this plan retains. */
+function withinRetention(map, cutoff) {
+  if (!cutoff) return map || {}
+  return Object.fromEntries(Object.entries(map || {}).filter(([day]) => day >= cutoff))
+}
 
 app.get('/api/stats', requireUser, requireScope('analytics:read'), async (req, res) => {
   const summary = await store.summary(req.user.id)
   const camps = await campaigns.byOwner(req.user.id)
-  res.json({ ...summary, totalCampaigns: camps.length })
+  const cutoff = retentionCutoff(req.user)
+  res.json({
+    ...summary,
+    series: withinRetention(summary.series, cutoff),
+    linksSeries: withinRetention(summary.linksSeries, cutoff),
+    topLinks: (summary.topLinks || []).map((l) => ({ ...l, daily: withinRetention(l.daily, cutoff) })),
+    analyticsDays: Number.isFinite(limitFor(req.user, 'analyticsDays'))
+      ? limitFor(req.user, 'analyticsDays')
+      : null,
+    totalCampaigns: camps.length,
+  })
 })
 
 /* --------------------------------- export --------------------------------- */
@@ -1671,6 +2087,11 @@ function csvCell(value) {
 const csvRows = (rows) => rows.map((r) => r.map(csvCell).join(',')).join('\r\n') + '\r\n'
 
 app.get('/api/export', requireUser, requireScope('analytics:read'), limit('export:hour', (req) => req.user?.id || clientId(req)), async (req, res) => {
+  // Enforced here, not by hiding the button. An export is a paid feature, so an
+  // API client asking for one directly gets the same answer as the UI.
+  const deny = requireFeature(req.user, 'csvExport', 'CSV export')
+  if (deny) return res.status(deny.status).json(deny.body)
+
   const type = CSV_TYPES.includes(String(req.query.type)) ? String(req.query.type) : 'links'
   const links = await store.byOwner(req.user.id)
   const stamp = new Date().toISOString().slice(0, 10)
@@ -1762,8 +2183,20 @@ app.get('/api/cron/health-check', async (req, res) => {
 
   const limitN = Math.min(Math.max(Number(req.query.limit) || 40, 1), 100)
   const all = await store.all()
-  const due = dueLinks(all, { limit: limitN })
-  if (!due.length) return res.json({ checked: 0, broken: 0, note: 'Nothing due.' })
+
+  // Only accounts whose plan includes monitoring are checked. Making outbound
+  // requests on behalf of somebody who cannot see the answer spends our egress
+  // and their destination's patience for nothing.
+  const owners = [...new Set(all.map((l) => l.owner).filter(Boolean))]
+  const watched = new Set()
+  for (const id of owners) {
+    const owner = await users.getById(id).catch(() => null)
+    if (owner && can(owner, 'healthMonitoring')) watched.add(id)
+  }
+  const due = dueLinks(
+    all.filter((l) => l.owner && watched.has(l.owner)),
+    { limit: limitN },
+  )
 
   const blocked = await blockedDomains()
   const summary = { checked: 0, ok: 0, broken: 0, recovered: 0, byStatus: {} }
@@ -1795,12 +2228,117 @@ app.get('/api/cron/health-check', async (req, res) => {
         if (before) summary.recovered++
       } else if (fresh.health.alerting) {
         summary.broken++
+        // Only on the transition, not on every check, so a destination that
+        // stays broken does not send a notification every six hours.
+        if (!before && fresh.owner) {
+          const owner = await users.getById(fresh.owner).catch(() => null)
+          if (owner) {
+            fireWebhooks(owner, 'destination.failed', {
+              slug: fresh.slug,
+              url: fresh.url,
+              status: fresh.health.status,
+              code: fresh.health.code,
+              failingSince: fresh.health.failingSince,
+            })
+          }
+        }
       }
     }
   }
 
+  summary.webhooks = await drainWebhookQueue()
+  summary.summaries = await sendClickSummaries()
   res.json(summary)
 })
+
+/**
+ * Click volume, as a periodic summary rather than a webhook per click.
+ *
+ * This is the alternative to a per-click event, and the reason there is not
+ * one: a click is a 302 that takes a few milliseconds, and an outbound request
+ * on that path would make the fastest part of the product depend on whoever is
+ * subscribed. The same information arrives here, in day totals, without anyone
+ * else's outage touching a redirect.
+ *
+ * At most one a day per endpoint: this is a digest, not a feed.
+ */
+const SUMMARY_INTERVAL_MS = 24 * 3600 * 1000
+async function sendClickSummaries() {
+  let sent = 0
+  for (const user of await users.all()) {
+    const due = subscribers(user, 'clicks.summary').filter(
+      (e) => !e.lastSummaryAt || Date.now() - e.lastSummaryAt >= SUMMARY_INTERVAL_MS,
+    )
+    if (!due.length) continue
+
+    const links = await store.byOwner(user.id)
+    const since = Math.min(...due.map((e) => e.lastSummaryAt || 0)) || Date.now() - SUMMARY_INTERVAL_MS
+    const from = new Date(since).toISOString().slice(0, 10)
+
+    const days = {}
+    const perLink = []
+    for (const l of links) {
+      let linkTotal = 0
+      for (const [day, n] of Object.entries(l.daily || {})) {
+        if (day < from) continue
+        days[day] = (days[day] || 0) + n
+        linkTotal += n
+      }
+      if (linkTotal) perLink.push({ slug: l.slug, url: l.url, clicks: linkTotal })
+    }
+
+    const total = Object.values(days).reduce((a, b) => a + b, 0)
+    // Nothing happened, so there is nothing to say. A daily "0 clicks" webhook
+    // is noise that gets the endpoint muted.
+    if (!total) continue
+
+    fireWebhooks(user, 'clicks.summary', {
+      since: from,
+      total,
+      days,
+      links: perLink.sort((a, b) => b.clicks - a.clicks).slice(0, 50),
+    })
+
+    for (const e of due) e.lastSummaryAt = Date.now()
+    await users.update(user).catch(() => {})
+    sent++
+  }
+  return { sent }
+}
+
+/**
+ * Retry deliveries that did not land.
+ *
+ * Here rather than inline: a receiver being down must not hold open the request
+ * that triggered the event, and a serverless function that has already answered
+ * cannot keep retrying in the background.
+ */
+async function drainWebhookQueue(limit = 50) {
+  const queued = await store.takeQueuedDeliveries(limit)
+  if (!queued.length) return { retried: 0, delivered: 0 }
+
+  const blocked = await blockedDomains()
+  const validate = (url) => validateUrl(url, { blocked, selfHost: SELF_HOST })
+  let delivered = 0
+  let retried = 0
+
+  for (const item of queued) {
+    // Not due yet: put it back rather than trying early.
+    if (item.at && item.at > Date.now()) {
+      await store.queueDelivery(item)
+      continue
+    }
+    const user = await users.getById(item.userId).catch(() => null)
+    const endpoint = (user?.webhooks || []).find((e) => e.id === item.endpointId)
+    if (!user || !endpoint || endpoint.active === false) continue
+
+    retried++
+    const result = await deliverWebhook(endpoint, item.delivery, { validate })
+    if (result.ok) delivered++
+    await recordDelivery(user, endpoint, item.delivery, result, item.attempt || 1)
+  }
+  return { retried, delivered }
+}
 
 /**
  * The links this account should look at.
@@ -1809,6 +2347,9 @@ app.get('/api/cron/health-check', async (req, res) => {
  * without paging through everything.
  */
 app.get('/api/links/health', requireUser, requireScope('analytics:read'), async (req, res) => {
+  const deny = requireFeature(req.user, 'healthMonitoring', 'Destination monitoring')
+  if (deny) return res.status(deny.status).json(deny.body)
+
   const links = await store.byOwner(req.user.id)
   const broken = links.filter(isBroken)
   const checked = links.filter((l) => l.health?.checkedAt)
@@ -1925,6 +2466,25 @@ app.get('/api/qr', requireScope('qr:read'), limit('redirect:minute'), async (req
 
   const name = String(req.query.name || 'qr').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 60) || 'qr'
   const size = Math.min(Math.max(Number(req.query.size) || 512, 96), 2048)
+
+  // Downloading a code is what the plan meters. Previews are free, because a
+  // page that draws a QR on every render would otherwise spend somebody's
+  // monthly allowance on scrolling.
+  if (req.query.download && req.user) {
+    const quota = await hit('qr:month', req.user.id, { user: req.user })
+    if (!quota.allowed) {
+      const bigger = PLAN_IDS.find((id) => PLANS[id].limits.qrPerMonth > quota.limit)
+      return res.status(402).json({
+        error: `You have downloaded ${quota.limit} QR codes in the last 30 days, which is this plan's allowance.${
+          bigger ? ` ${PLANS[bigger].label} includes ${PLANS[bigger].limits.qrPerMonth.toLocaleString('en-US')}.` : ''
+        }`,
+        needsUpgrade: Boolean(bigger),
+        upgradeTo: bigger || null,
+        limit: quota.limit,
+        resetAt: quota.resetAt,
+      })
+    }
+  }
 
   try {
     // PNG stays for API callers and anything that cannot render SVG. It is the
@@ -2581,7 +3141,9 @@ app.get('/api/admin/funnel', async (req, res) => {
  * labelled as one: it does not know about discounts, proration, coupons,
  * annual billing or tax. For the real number, read Stripe.
  */
-const PLAN_PRICES = { free: 0, pro: 9, business: 29 }
+// Prices come from the plan catalogue, never from a second table here: an
+// estimate computed from a stale copy of the pricing is worse than no estimate.
+const PLAN_PRICES = Object.fromEntries(PLAN_IDS.map((id) => [id, monthlyPrice(id)]))
 
 app.get('/api/admin/billing', async (_req, res) => {
   const all = await users.all()
@@ -2978,6 +3540,17 @@ app.get('/:slug', limit('redirect:minute'), async (req, res) => {
   const status = effectiveStatus(link)
   if (status === 'disabled') {
     return res.status(410).type('html').send(gonePage('Link disabled', 'This link was disabled for violating our terms.'))
+  }
+  if (status === 'scheduled') {
+    return res
+      .status(404)
+      .type('html')
+      .send(
+        gonePage(
+          'Not live yet',
+          `This link goes live on ${new Date(link.startsAt).toUTCString()}.`,
+        ),
+      )
   }
   if (status === 'expired') {
     return res

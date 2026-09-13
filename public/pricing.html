@@ -4,17 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pricing - Every limit, before you sign up | ashrt.link</title>
-    <meta name="description" content="What each plan costs and exactly what it includes. A free plan you can run a project on, custom domains from $9, and no limits hidden until after you sign up." />
+    <meta name="description" content="What each plan costs and exactly what it includes. Free forever for 10 links a month, Pro at $9 with your own domain, Business at $29. Every limit stated before you sign up." />
     <link rel="canonical" href="https://www.ashrt.link/pricing" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="ashrt.link" />
     <meta property="og:url" content="https://www.ashrt.link/pricing" />
     <meta property="og:title" content="Pricing - Every limit, before you sign up | ashrt.link" />
-    <meta property="og:description" content="What each plan costs and exactly what it includes. A free plan you can run a project on, custom domains from $9." />
+    <meta property="og:description" content="What each plan costs and exactly what it includes. Free forever for 10 links a month, your own domain from $9." />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Pricing - Every limit, before you sign up | ashrt.link" />
-    <meta name="twitter:description" content="What each plan costs and exactly what it includes. A free plan you can run a project on, custom domains from $9." />
+    <meta name="twitter:description" content="What each plan costs and exactly what it includes. Free forever for 10 links a month, your own domain from $9." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -43,55 +43,64 @@
         <p class="hero-sub">
           The allowance is on links you create, not on links you keep. Anything you have already
           published stays live and stops counting once its month passes, on every plan, including
-          after a downgrade.
+          after a downgrade. Nothing you made is ever deleted because you stopped paying.
         </p>
       </section>
 
-      <section id="plans" class="price-grid"></section>
+      <section id="plans" class="price-section"></section>
 
       <section class="article">
         <h2>What is in every plan</h2>
-        <ul class="tick-list">
-          <li><b>No interstitial.</b> A click goes straight to the destination. No advert, no "you are being redirected" page, ever.</li>
-          <li><b>Full analytics.</b> Clicks, unique visitors, referrers, countries, devices, browsers, operating systems, time of day and day of week. Not a paid add-on.</li>
-          <li><b>400 days of click history</b>, on the free plan too.</li>
-          <li><b>Bot traffic separated and named.</b> Slack, X, Facebook, Discord and iMessage all fetch a link to build a preview. Those are counted apart from people, so your numbers are not quietly inflated.</li>
-          <li><b>A QR code for every link</b>, pointing at the short link, so you can change the destination after it is printed.</li>
-          <li><b>Editable destinations</b>, with the last ten remembered and one click to put an old one back.</li>
-          <li><b>CSV export</b> of links, daily clicks and campaign totals.</li>
-          <li><b>An API</b> with a per-day quota rather than a paywall.</li>
-        </ul>
-
-        <h2>What the paid plans add</h2>
         <p>
-          A <b>custom domain</b> so links read as <span class="mono">go.yourbrand.com</span>, <b>QR
-          design</b> (colours, dot and corner styles, your logo, a frame and a caption), <b>link
-          expiry</b>, a much larger creation allowance, and a higher API quota. Business adds more
-          domains and the largest allowance.
+          Not a teaser list: these are the things the free plan has in full, and no paid tier
+          takes them away.
+        </p>
+        <ul class="tick-list" id="universal"></ul>
+        <p>
+          A click goes straight to its destination on every plan. No advert, no "you are being
+          redirected" page, no branding of ours on your link, ever. Bot traffic — Slack, X,
+          Facebook, Discord and iMessage all fetch a link to build a preview — is counted apart
+          from people, so your numbers are not quietly inflated.
         </p>
 
+        <h2>Compare the plans</h2>
+        <p class="panel-sub">
+          Every row is a limit the server actually enforces, read from the same place the API
+          reads it.
+        </p>
+        <div id="matrix" class="compare-wrap"></div>
+
         <h2>Questions people actually ask</h2>
-        <h3>What happens when I hit the limit?</h3>
+        <h3>What happens when I hit the link limit?</h3>
         <p>
-          New links stop until the window rolls over, and the message says when that is. Existing
-          links keep redirecting and keep recording clicks. Nothing you have published breaks.
+          New links stop until the window rolls over, and the message says when that is. Every
+          link you have already made keeps redirecting and keeps recording clicks. Nothing you
+          have published breaks, and nothing is deleted.
         </p>
         <h3>What happens if I cancel?</h3>
         <p>
           Your account drops to free at the end of the period. Every link you made keeps working,
-          including links on a custom domain you had verified. You lose the ability to add new
-          things the paid plan covered, not the things you already made with it.
+          including links on a custom domain you had verified, and your QR codes keep resolving.
+          Your click history, campaigns and destinations are not deleted — the free plan shows a
+          shorter analytics window, and the rest reappears if you subscribe again. What you lose
+          is the ability to add new things the paid plan covered, not the things you already made
+          with it.
+        </p>
+        <h3>Do old links count against my monthly allowance?</h3>
+        <p>
+          No. The allowance is on links you create in a rolling 30-day window. A link you made
+          last year costs you nothing to keep.
         </p>
         <h3>Is there a free trial?</h3>
         <p>
-          The free plan is the trial, and it does not expire. It is deliberately enough to run a
-          real project on rather than enough to see a screenshot.
+          The free plan is the trial, and it does not expire. It is meant to be enough to see
+          whether this works for you, on real links with real analytics.
         </p>
         <h3>Do I need an account to try it?</h3>
         <p>
-          No. You can create a tracking link on the <a href="/">home page</a> without signing up and
-          watch the clicks arrive. Guest links last 30 days, and you can claim them into an account
-          later without losing the stats.
+          No. You can create a tracking link on the <a href="/">home page</a> without signing up
+          and watch the clicks arrive. Guest links last 30 days, and you can claim them into an
+          account later without losing the stats.
         </p>
       </section>
 
@@ -133,7 +142,7 @@
         {
           "@type": "Question",
           "name": "What happens when I reach the link limit?",
-          "acceptedAnswer": { "@type": "Answer", "text": "New links stop until the 30-day window rolls over, and the message says when that is. Existing links keep redirecting and keep recording clicks." }
+          "acceptedAnswer": { "@type": "Answer", "text": "New links stop until the rolling 30-day window rolls over, and the message says when that is. Every link already created keeps redirecting and keeps recording clicks, and nothing is deleted." }
         },
         {
           "@type": "Question",
@@ -143,7 +152,7 @@
         {
           "@type": "Question",
           "name": "Is the free plan time limited?",
-          "acceptedAnswer": { "@type": "Answer", "text": "No. The free plan does not expire and includes full analytics, 400 days of click history, QR codes and API access." }
+          "acceptedAnswer": { "@type": "Answer", "text": "No. The free plan does not expire. It includes 10 new links a month, full click analytics with a 30-day history, a QR code for every link and API access." }
         },
         {
           "@type": "Question",
@@ -153,6 +162,7 @@
       ]
     }
     </script>
+    <script src="/plans-ui.js"></script>
     <script src="/pricing.js"></script>
     <script src="/events.js"></script>
   </body>

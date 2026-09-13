@@ -17,12 +17,12 @@ process.env.ASHRT_DATA_DIR = DATA_DIR
 process.env.SESSION_SECRET = 'export-test-secret-0123456789'
 process.env.BASE_URL = 'http://localhost:4999'
 
-let request, app, ratelimit, abuse, store
+let request, app, ratelimit, abuse, store, users
 
 before(async () => {
   request = (await import('supertest')).default
   app = (await import('../server.js')).default
-  ;({ store } = await import('../store.js'))
+  ;({ store, users } = await import('../store.js'))
   ratelimit = await import('../lib/ratelimit.js')
   abuse = await import('../lib/abuse.js')
 })
@@ -34,11 +34,16 @@ beforeEach(() => {
 })
 
 let seq = 0
-async function signup() {
-  const res = await request(app)
-    .post('/auth/register')
-    .send({ email: `x${++seq}@example.com`, password: 'a-good-password' })
+/** CSV export is a paid feature, so the export tests run as a paying account. */
+async function signup(plan = 'pro') {
+  const email = `x${++seq}@example.com`
+  const res = await request(app).post('/auth/register').send({ email, password: 'a-good-password' })
   assert.equal(res.status, 200)
+  if (plan !== 'free') {
+    const user = await users.getByEmail(email)
+    user.plan = plan
+    await users.update(user)
+  }
   return res.headers['set-cookie']
 }
 
@@ -134,4 +139,19 @@ test('an unknown type falls back to links rather than erroring', async () => {
   const res = await request(app).get('/api/export?type=../../etc/passwd').set('Cookie', cookie)
   assert.equal(res.status, 200)
   assert.match(res.headers['content-disposition'], /ashrt-links-/)
+})
+
+test('export is enforced on the server, not by hiding the button', async () => {
+  // A free account that calls the endpoint directly gets the same answer the
+  // UI would give it, and is told which plan includes the feature.
+  const cookie = await signup('free')
+  await request(app).post('/api/links').set('Cookie', cookie).send({ url: 'example.com/free-export' })
+
+  for (const type of ['links', 'daily', 'campaigns']) {
+    const res = await request(app).get(`/api/export?type=${type}`).set('Cookie', cookie)
+    assert.equal(res.status, 402, `${type} must be refused`)
+    assert.equal(res.body.needsUpgrade, true)
+    assert.equal(res.body.upgradeTo, 'pro')
+    assert.ok(!res.text.includes('short_code'), 'no rows may leak in the refusal')
+  }
 })

@@ -171,6 +171,43 @@ function render() {
 
 /* --------------------------------- loading -------------------------------- */
 
+/**
+ * How much of this period's allowance is left, said before it runs out.
+ *
+ * Finding out you are at the limit at the moment you needed one more link is
+ * the avoidable version of this. The numbers come from /api/usage/summary,
+ * which reads the same counters the server enforces with.
+ */
+async function loadAllowance() {
+  const el = $('quick-limit')
+  let use
+  try {
+    use = await (await fetch('/api/usage/summary')).json()
+  } catch {
+    return null
+  }
+  if (!el) return use
+  const { used, limit, resetAt } = use.links || {}
+
+  const left = Math.max(0, limit - used)
+  const days = resetAt ? Math.max(0, Math.round((resetAt - Date.now()) / 86400000)) : null
+  const when = days === null ? '' : days <= 1 ? ', resets within a day' : `, resets in ${days} days`
+
+  if (!Number.isFinite(limit)) return use
+
+  if (left === 0) {
+    el.innerHTML = `You have created ${used} of ${limit} links this period${when}. Links you have already made keep working. <a href="/account">See plans</a>`
+    el.classList.add('over')
+  } else if (left <= Math.max(2, Math.round(limit * 0.1))) {
+    el.innerHTML = `${left} link${left === 1 ? '' : 's'} left this period${when}. <a href="/account">See plans</a>`
+    el.classList.add('over')
+  } else {
+    el.textContent = `${used} of ${limit} links used this period${when}.`
+    el.classList.remove('over')
+  }
+  return use
+}
+
 async function loadStats() {
   const res = await fetch('/api/stats')
   if (res.status === 401) return (window.location.href = '/login')
@@ -185,10 +222,15 @@ async function loadStats() {
  * what the last check found. Shown at the top because a broken destination is
  * costing clicks right now, and nothing else on this page tells you.
  */
-async function loadHealth() {
+async function loadHealth(features) {
+  // Monitoring is a paid feature. A plan without it has no panel here, and we
+  // do not ask the server a question we already know the answer to.
+  if (features && !features.healthMonitoring) return
   let data
   try {
-    data = await (await fetch('/api/links/health')).json()
+    const res = await fetch('/api/links/health')
+    if (!res.ok) return
+    data = await res.json()
   } catch {
     return
   }
@@ -282,7 +324,7 @@ async function createLink(e) {
     $('quick-title').value = ''
     $('quick-url').focus()
 
-    await loadStats()
+    await Promise.all([loadStats(), loadAllowance()])
   } catch {
     $('quick-err').textContent = 'Network error. Try again.'
   } finally {
@@ -337,5 +379,6 @@ $('range').addEventListener('click', (e) => {
   const user = await window.shellReady
   if (!user) return
   $('greeting').textContent = greet((user.name || user.email || '').split('@')[0])
-  await Promise.all([loadCampaigns(), loadStats(), loadHealth()])
+  const [, , use] = await Promise.all([loadCampaigns(), loadStats(), loadAllowance()])
+  await loadHealth(use?.features)
 })()

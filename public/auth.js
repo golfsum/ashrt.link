@@ -1,9 +1,21 @@
 const $ = (id) => document.getElementById(id)
 const isSignup = location.pathname.replace(/\/$/, '').endsWith('/signup')
 
-// If already signed in, skip straight to the dashboard.
+/**
+ * Where to go once the account exists.
+ *
+ * Somebody who pressed "Choose Pro" on the pricing page asked to buy Pro, not
+ * to look at a dashboard and find the button again, so the choice travels with
+ * them as ?plan= and the account page picks it up.
+ */
+function landing() {
+  const plan = new URLSearchParams(location.search).get('plan')
+  return ['pro', 'business'].includes(plan) ? `/account?upgrade=${plan}` : '/dashboard'
+}
+
+// If already signed in, skip the form entirely.
 fetch('/auth/me', { cache: 'no-store' }).then((r) => {
-  if (r.ok) window.location.href = '/dashboard'
+  if (r.ok) window.location.href = landing()
 })
 
 // Show the OAuth buttons that the server has configured.
@@ -71,7 +83,7 @@ $('form').addEventListener('submit', async (e) => {
     }
     // The tokens have done their job; the links belong to an account now.
     if (window.GuestLinks) window.GuestLinks.clear()
-    window.location.href = '/dashboard'
+    window.location.href = landing()
   } catch {
     $('err').textContent = 'Network error. Try again.'
   } finally {

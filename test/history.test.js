@@ -35,11 +35,15 @@ beforeEach(() => {
 })
 
 let seq = 0
-async function signup() {
-  const res = await request(app)
-    .post('/auth/register')
-    .send({ email: `h${++seq}@example.com`, password: 'a-good-password' })
+async function signup(plan = 'pro') {
+  const email = `h${++seq}@example.com`
+  const res = await request(app).post('/auth/register').send({ email, password: 'a-good-password' })
   assert.equal(res.status, 200)
+  if (plan !== 'free') {
+    const user = await users.getByEmail(email)
+    user.plan = plan
+    await users.update(user)
+  }
   return { cookie: res.headers['set-cookie'], id: res.body.user.id, email: res.body.user.email }
 }
 
@@ -78,8 +82,41 @@ test('the history is capped so one record cannot grow forever', async () => {
 
   const now = await request(app).get('/api/links').set('Cookie', me.cookie)
   const link = now.body.links.find((l) => l.slug === made.body.slug)
-  assert.equal(link.history.length, 10)
+  assert.equal(link.history.length, 10, 'Pro rolls back ten')
   assert.equal(link.history[0].url, 'https://example.com/13', 'newest first')
+})
+
+test('how far back you can roll is the plan, and the record is not thrown away', async () => {
+  // Free gets the one destination before this one — enough to undo a mistake.
+  // The rest of the record is still kept, so upgrading shows it rather than
+  // starting the history over, and downgrading never deletes it.
+  const me = await signup('free')
+  const made = await create(me.cookie, 'example.com/a')
+  for (const step of ['b', 'c', 'd']) await edit(me.cookie, made.body.slug, { url: `example.com/${step}` })
+
+  const asFree = await request(app).get('/api/links').set('Cookie', me.cookie)
+  const shown = asFree.body.links.find((l) => l.slug === made.body.slug)
+  assert.equal(shown.history.length, 1)
+  assert.equal(shown.history[0].url, 'https://example.com/c')
+  assert.equal(shown.historyKept, 3, 'the record still holds all three')
+
+  // And the depth is enforced, not just displayed: reverting to a destination
+  // the plan cannot reach is an upgrade prompt, never a silent success.
+  const older = (await store.get(made.body.slug)).history.at(-1)
+  const denied = await request(app)
+    .post(`/api/links/${made.body.slug}/revert`)
+    .set('Cookie', me.cookie)
+    .send({ changedAt: older.changedAt })
+  assert.equal(denied.status, 402)
+  assert.equal(denied.body.upgradeTo, 'pro')
+
+  const user = await users.getByEmail(me.email)
+  user.plan = 'pro'
+  await users.update(user)
+
+  const asPro = await request(app).get('/api/links').set('Cookie', me.cookie)
+  const full = asPro.body.links.find((l) => l.slug === made.body.slug)
+  assert.equal(full.history.length, 3, 'upgrading reveals what was already there')
 })
 
 test('a link says how much traffic is at stake before it is changed', async () => {
@@ -156,7 +193,7 @@ test('history and revert belong to the owner alone', async () => {
 /* --------------------------------- expiry --------------------------------- */
 
 test('expiry is a paid feature, refused server-side', async () => {
-  const me = await signup()
+  const me = await signup('free')
   const made = await create(me.cookie, 'example.com/expiring')
   const res = await edit(me.cookie, made.body.slug, { expiresAt: Date.now() + 86400000 })
   assert.equal(res.status, 402)
@@ -193,4 +230,58 @@ test('a paid account can set an expiry, and an expired link stops forwarding', a
   assert.equal(cleared.body.expiresAt, null)
   const again = await request(app).get(`/${made.body.slug}`).set('User-Agent', 'Mozilla/5.0 Chrome/120 Safari/537.36')
   assert.equal(again.status, 302)
+})
+
+/* ------------------------------- scheduling -------------------------------- */
+
+test('a scheduled link can be printed today and starts forwarding later', async () => {
+  const me = await signup('pro')
+  const made = await create(me.cookie, 'example.com/launch')
+  const startsAt = Date.now() + 60_000
+
+  const set = await edit(me.cookie, made.body.slug, { startsAt })
+  assert.equal(set.status, 200)
+  assert.equal(set.body.startsAt, startsAt)
+  assert.equal(set.body.status, 'scheduled')
+
+  // Before its time it does not forward, and it says why rather than looking
+  // like a broken link.
+  const early = await request(app).get(`/${made.body.slug}`)
+  assert.equal(early.status, 404)
+  assert.match(early.text, /Not live yet/)
+
+  // Once the time passes it starts on its own, with no further action.
+  const link = await store.get(made.body.slug)
+  link.startsAt = Date.now() - 1000
+  await store.add(link)
+  const live = await request(app).get(`/${made.body.slug}`)
+  assert.equal(live.status, 302)
+  assert.equal(live.headers.location, 'https://example.com/launch')
+})
+
+test('scheduling is a paid feature, refused server-side', async () => {
+  const me = await signup('free')
+  const made = await create(me.cookie, 'example.com/free-launch')
+  const res = await edit(me.cookie, made.body.slug, { startsAt: Date.now() + 60_000 })
+  assert.equal(res.status, 402)
+  assert.equal(res.body.upgradeTo, 'pro')
+  assert.equal((await store.get(made.body.slug)).startsAt, null, 'and nothing was set')
+})
+
+test('a link cannot be scheduled to start after it expires', async () => {
+  const me = await signup('pro')
+  const made = await create(me.cookie, 'example.com/window')
+  await edit(me.cookie, made.body.slug, { expiresAt: Date.now() + 60_000 })
+  const res = await edit(me.cookie, made.body.slug, { startsAt: Date.now() + 120_000 })
+  assert.equal(res.status, 400)
+})
+
+test('the record outlives the longest plan window, so no plan promises history we threw away', async () => {
+  const { DAILY_RETENTION_DAYS } = await import('../store.js')
+  const { PLANS, PLAN_IDS } = await import('../lib/plans.js')
+  const longest = Math.max(...PLAN_IDS.map((id) => PLANS[id].limits.analyticsDays))
+  assert.ok(
+    DAILY_RETENTION_DAYS >= longest,
+    `storage keeps ${DAILY_RETENTION_DAYS} days but a plan sells ${longest}`,
+  )
 })

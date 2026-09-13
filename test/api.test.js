@@ -562,7 +562,12 @@ test('the plan allowance is spent by creating links, not by keeping them', async
     const third = await createAs(cookie, { url: 'example.com/three' })
     assert.equal(third.status, 402, 'out of allowance is an upgrade prompt, not a rate limit')
     assert.equal(third.body.needsUpgrade, true)
-    assert.match(third.body.error, /last 30 days/)
+    assert.match(third.body.error, /2 of 2 links this period/)
+    // It names the plan that would fix it, with its price, so nobody has to go
+    // and look the number up.
+    assert.match(third.body.error, /Pro \(\$9\/mo\) includes 250 a month/)
+    assert.equal(third.body.upgradeTo, 'pro')
+    assert.match(third.body.error, /already made keeps working/)
     assert.ok(third.body.resetAt > Date.now(), 'and it says when it resets')
 
     // Deleting a link does not buy allowance back. The allowance is for

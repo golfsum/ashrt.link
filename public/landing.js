@@ -30,9 +30,28 @@ async function init() {
     }
   }
 
-  if ((user?.plan === 'pro' || user?.plan === 'business') && $('pro-btn')) {
-    $('pro-btn').textContent = "You're on Pro"
-    $('pro-btn').disabled = true
+  renderPlans()
+}
+
+/**
+ * The pricing block, rendered from /api/plans like every other place prices
+ * appear. There is no hand-written table on this page: when the homepage kept
+ * its own copy it was the first thing to go stale after a price change.
+ */
+async function renderPlans() {
+  const target = $('home-plans')
+  if (!target || !window.Plans) return
+  try {
+    const data = await Plans.load()
+    const me = await Plans.whoami()
+    target.innerHTML = data.plans
+      // Six lines a card on the homepage; /pricing has the full comparison.
+      .map((p) => Plans.card(p, { user: me, interval: Plans.interval, data, limit: 6, blurb: false }))
+      .join('')
+    Plans.wire(document)
+  } catch {
+    target.innerHTML =
+      '<p class="pricing-sub">Could not load the plans just now. <a href="/pricing">See pricing</a>.</p>'
   }
 }
 
@@ -140,27 +159,6 @@ function openQr() {
   $('qr-modal').classList.add('show')
 }
 
-async function upgrade(plan, btn, label) {
-  if (!user) return (window.location.href = '/signup')
-  btn.disabled = true
-  btn.textContent = 'Loading...'
-  try {
-    const res = await fetch('/api/billing/checkout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plan }),
-    })
-    const data = await res.json()
-    if (data.url) return (window.location.href = data.url)
-    setErr(data.error || 'Billing is not available yet.')
-  } catch {
-    setErr('Could not start checkout.')
-  } finally {
-    btn.disabled = false
-    btn.textContent = label
-  }
-}
-
 on('create-form', 'submit', create)
 
 on('more-toggle', 'click', () => {
@@ -179,8 +177,6 @@ on('result-qr', 'click', openQr)
 on('qr-close', 'click', () => $('qr-modal').classList.remove('show'))
 on('qr-modal', 'click', (e) => e.target === $('qr-modal') && $('qr-modal').classList.remove('show'))
 
-on('pro-btn', 'click', () => upgrade('pro', $('pro-btn'), 'Upgrade to Pro'))
-on('biz-btn', 'click', () => upgrade('business', $('biz-btn'), 'Choose Business'))
 
 init()
 
