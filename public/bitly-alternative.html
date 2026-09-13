@@ -42,7 +42,7 @@
         <h1>Looking for a simpler Bitly alternative?</h1>
         <p class="hero-sub">
           Short links, a branded domain, QR codes, campaigns and real analytics, without the jump
-          from a small-business plan to an enterprise one. Try it below without an account.
+          from a small-business plan to an enterprise one. The Free plan uses a verified account.
         </p>
       </section>
 
@@ -53,7 +53,7 @@
           <button id="go" class="btn" type="submit">Create a tracking link</button>
         </form>
         <div class="create-meta">
-          <span class="hint-inline">No account needed. Your link works immediately, and you can claim it later.</span>
+          <span class="hint-inline">Verify a free account to keep permanent links and manage them.</span>
         </div>
         <div id="result" class="tool-result" hidden>
           <div class="tool-result-head">
@@ -70,7 +70,7 @@
           <div class="tool-result-foot">
             <span id="result-clicks">0 clicks so far</span>
             <span id="result-expiry"></span>
-            <a class="tool-result-cta" href="/signup" id="result-save">Save this link to a free account</a>
+            <a class="tool-result-cta" href="/signup" id="result-save">Save this link to a verified free account</a>
           </div>
         </div>
         <div id="err" class="err" hidden></div>
@@ -94,7 +94,7 @@
               <tr><td>QR codes</td><td>2 per month</td><td>One for every link, 10 downloads a month</td></tr>
               <tr><td>Click history</td><td>Not included</td><td>30 days</td></tr>
               <tr><td>Referrers, countries, devices</td><td>Not on free</td><td>Included</td></tr>
-              <tr><td>Create without an account</td><td>No</td><td>Yes, and claim it later</td></tr>
+              <tr><td>Email verification</td><td>Account required</td><td>Required for the Free plan</td></tr>
               <tr><td>API</td><td>Not on free</td><td>25 calls a day</td></tr>
             </tbody>
           </table>
@@ -245,6 +245,11 @@
           "@type": "Question",
           "name": "Are analytics limited on the free plan?",
           "acceptedAnswer": { "@type": "Answer", "text": "No. Clicks, unique visitors, referrers, countries, devices, browsers, operating systems, time of day, day of week and campaign totals are all included on the free plan, with a 30-day history. CSV export and a 400-day history start on Pro at $9 a month." }
+        },
+        {
+          "@type": "Question",
+          "name": "Does the Free plan require an account?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. The ashrt.link Free plan requires a verified account so permanent links can be managed and abuse controls can be enforced." }
         },
         {
           "@type": "Question",
