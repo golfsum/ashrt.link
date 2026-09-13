@@ -388,7 +388,11 @@ function safeUser(u, { key = false } = {}) {
     name: u.name,
     provider: u.provider || 'password',
     plan: planIdOf(u),
-    role: u.role === 'admin' ? 'admin' : 'user',
+    // Must be isAdmin(), not a bare check of the stored field. The bootstrap
+    // allowlist also grants the role, so reading the record alone reports
+    // "user" for an account the server is already treating as an admin, and
+    // the admin pages then bounce someone the server had just let in.
+    role: isAdmin(u) ? 'admin' : 'user',
     status: u.status || 'active',
     createdAt: u.createdAt,
   }
@@ -422,8 +426,13 @@ const htmlPage = (title, body) => `<!doctype html><html lang="en"><head><meta ch
 
 app.get('/auth/config', (_req, res) => res.json({ providers: oauthEnabled() }))
 
-app.get('/auth/me', (req, res) => {
+app.get('/auth/me', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Not signed in' })
+  // Adding ADMIN_EMAILS for an account that already exists should not require
+  // signing out and back in to take effect, especially since the login page
+  // bounces anyone who is already signed in. Persist the role the first time
+  // we see it here, so the record converges and the env var can be removed.
+  await syncAdminRole(req.user, users).catch(() => {})
   res.json({ user: safeUser(req.user) })
 })
 
@@ -1220,7 +1229,9 @@ function adminUser(u, extra = {}) {
     email: u.email,
     name: u.name,
     plan: planIdOf(u),
-    role: u.role === 'admin' ? 'admin' : 'user',
+    // Same reasoning as safeUser: an account the bootstrap allowlist grants
+    // admin to should show as an admin in the user list, not as a normal user.
+    role: isAdmin(u) ? 'admin' : 'user',
     status: u.status || 'active',
     provider: u.provider || 'password',
     createdAt: u.createdAt,

@@ -458,3 +458,65 @@ test('the billing report leaks no card or key data', async () => {
     assert.ok(!body.includes(leak), `billing leaked ${leak}`)
   }
 })
+
+/* ------------------------- bootstrap role consistency --------------------- */
+
+/**
+ * The bug this guards against: ADMIN_EMAILS granted access server-side, but
+ * /auth/me computed `role` from the stored record alone and reported "user".
+ * The server let the admin page load and the page then redirected the person
+ * straight back out, which looks exactly like "admin is broken".
+ */
+test('an allowlisted account is reported as an admin, not just treated as one', async () => {
+  // An account that exists with no role on its record, the way one does when
+  // ADMIN_EMAILS is added after the account was created.
+  const late = await signup({ email: 'root@ashrt.link' }).catch(async () => {
+    const res = await request(app).post('/auth/login').send({ email: 'root@ashrt.link', password: 'a-good-password' })
+    return { cookie: res.headers['set-cookie'], user: res.body.user }
+  })
+
+  const record = await users.getById(late.user.id)
+  record.role = 'user' // simulate a record predating the allowlist
+  await users.update(record)
+
+  // The server still lets them in...
+  assert.equal((await adminGet(late.cookie, '/api/admin/overview')).status, 200)
+
+  // ...and /auth/me must agree, or the page bounces them.
+  const me = await request(app).get('/auth/me').set('Cookie', late.cookie)
+  assert.equal(me.body.user.role, 'admin', 'the client is told the same thing the server enforces')
+})
+
+test('reading /auth/me persists the granted role so the env var can be removed', async () => {
+  const root = await asRoot()
+  const record = await users.getById(root.user.id)
+  record.role = 'user'
+  await users.update(record)
+
+  await request(app).get('/auth/me').set('Cookie', root.cookie)
+
+  const after = await users.getById(root.user.id)
+  assert.equal(after.role, 'admin', 'the role should be written to the record, not recomputed forever')
+})
+
+test('a normal account is never reported as an admin', async () => {
+  const member = await signup()
+  const me = await request(app).get('/auth/me').set('Cookie', member.cookie)
+  assert.equal(me.body.user.role, 'user')
+
+  const record = await users.getById(member.user.id)
+  assert.notEqual(record.role, 'admin', 'and nothing promoted them on the way through')
+})
+
+test('a suspended allowlisted account is not an admin', async () => {
+  const root = await asRoot()
+  const record = await users.getById(root.user.id)
+  record.status = 'suspended'
+  await users.update(record)
+
+  assert.equal((await request(app).get('/auth/me').set('Cookie', root.cookie)).status, 401)
+  assert.equal((await adminGet(root.cookie, '/api/admin/overview')).status, 401)
+
+  record.status = 'active'
+  await users.update(record)
+})
