@@ -1,5 +1,11 @@
 // Tiny dependency-free chart renderers (SVG + HTML). window.Charts.*
 
+// 'XX' is what the redirect records when the CDN gave us no country. Showing
+// the raw code reads as a bug, so it is presented as Unknown everywhere.
+function countryName(code) {
+  return !code || code === 'XX' ? 'Unknown' : code
+}
+
 function flag(code) {
   if (!code || code.length !== 2 || code === 'XX') return '🌐'
   try {
@@ -83,7 +89,7 @@ function barList(el, data, opts = {}) {
     .map((d) => {
       const pct = total ? Math.round((d.value / total) * 100) : 0
       const w = max ? Math.max(3, Math.round((d.value / max) * 100)) : 0
-      const label = opts.flag ? `${flag(d.label)} ${d.label}` : d.label
+      const label = opts.flag ? `${flag(d.label)} ${countryName(d.label)}` : d.label
       return `<div class="bar-row">
         <div class="bar-top"><span class="bar-label">${label}</span><span class="bar-val">${d.value.toLocaleString()} <span class="bar-pct">${pct}%</span></span></div>
         <div class="bar-track"><div class="bar-fill" style="width:${w}%"></div></div>
@@ -96,4 +102,4 @@ function empty(el) {
   el.innerHTML = '<div class="chart-empty">No data yet</div>'
 }
 
-window.Charts = { line, donut, barList, flag }
+window.Charts = { line, donut, barList, flag, countryName }

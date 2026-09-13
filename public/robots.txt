@@ -1,0 +1,24 @@
+# ashrt.link
+
+User-agent: *
+
+# Private application surfaces. These are also served with an X-Robots-Tag
+# noindex header, which is the part that actually enforces it: robots.txt is a
+# request, not a control.
+Disallow: /dashboard
+Disallow: /links
+Disallow: /link
+Disallow: /analytics
+Disallow: /campaigns
+Disallow: /qr
+Disallow: /settings
+Disallow: /account
+Disallow: /developers
+Disallow: /admin
+Disallow: /track
+Disallow: /api/
+Disallow: /auth/
+Disallow: /login
+Disallow: /signup
+
+Sitemap: https://www.ashrt.link/sitemap.xml

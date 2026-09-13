@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -13,26 +14,46 @@
   <body data-page="campaigns">
     <div class="app">
       <aside class="sidebar" id="sidebar"></aside>
+
       <main class="main">
         <div class="main-inner">
-          <header class="topbar">
+          <header class="topbar topbar-tight">
             <div>
               <h1>Campaigns</h1>
-              <p class="sub">Group links by campaign and track their combined performance.</p>
+              <p class="sub" id="summary">Group links so you can compare them.</p>
             </div>
-            <div class="actions"><button id="create" class="btn">New Campaign</button></div>
+            <div class="actions">
+              <button id="new-campaign" class="btn">New campaign</button>
+              <button id="toggle-archived" class="btn btn-ghost">Show archived</button>
+            </div>
           </header>
 
           <div id="grid" class="camp-grid"></div>
-          <div id="empty" class="chart-empty" style="display:none">No campaigns yet. Create one to group your links.</div>
+
+          <div id="empty" class="empty-state" hidden>
+            <h2>No campaigns yet</h2>
+            <p>
+              A campaign groups links that belong to the same push, so you can see
+              which of them actually pulled traffic.
+            </p>
+            <button class="btn" id="empty-create">Create a campaign</button>
+          </div>
+
+          <section class="panel-card" id="detail" hidden>
+            <div class="panel-head">
+              <h2 id="detail-name">Campaign</h2>
+              <a class="head-link" id="detail-analytics" href="/analytics">Full analytics</a>
+            </div>
+            <div id="detail-links"></div>
+          </section>
         </div>
       </main>
     </div>
 
     <div id="modal" class="modal-backdrop">
       <div class="modal">
-        <h3>New campaign</h3>
-        <input id="c-name" type="text" placeholder="e.g. Summer Sale" />
+        <h3 id="modal-title">New campaign</h3>
+        <input id="c-name" type="text" placeholder="Fall Facebook ads" />
         <div id="c-err" class="auth-err"></div>
         <div class="modal-actions">
           <button id="c-cancel" class="btn btn-ghost">Cancel</button>

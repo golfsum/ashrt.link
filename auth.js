@@ -24,6 +24,12 @@ const SESSION_DAYS = 30
 export const newUserId = () => 'u_' + crypto.randomBytes(9).toString('base64url')
 export const newApiKey = () => 'ak_' + crypto.randomBytes(24).toString('base64url')
 
+/**
+ * Management token for a guest link. 32 random bytes, so it cannot be guessed
+ * from the short code. Only its hash is stored; this plaintext is shown once.
+ */
+export const newGuestToken = () => 'gt_' + crypto.randomBytes(32).toString('base64url')
+
 export async function hashPassword(pw) {
   return bcrypt.hash(pw, 10)
 }
@@ -88,6 +94,9 @@ export function clearSession(res) {
  * Resolve the current user from either a session cookie (dashboard) or an
  * `x-api-key` header (Schedlytics / programmatic). Sets req.user or leaves it
  * undefined. Never rejects - use requireUser to gate.
+ *
+ * A suspended account resolves to no user at all, so suspension takes effect
+ * immediately even though session tokens are stateless and unexpired.
  */
 export function attachUser(users) {
   return async (req, _res, next) => {
@@ -95,13 +104,25 @@ export function attachUser(users) {
       const key = req.get('x-api-key')
       if (key) {
         const u = await users.getByApiKey(key)
-        if (u) req.user = u
+        if (u && u.status !== 'suspended' && !u.apiDisabled) {
+          req.user = u
+          req.authMethod = 'apikey'
+        } else {
+          // A key that was sent but did not resolve is an error, not an
+          // anonymous request. Falling through to the guest path would hand a
+          // caller with a revoked key a cheerful 200 while their links landed
+          // in no account at all.
+          req.badApiKey = true
+        }
         return next()
       }
       const uid = readToken(parseCookies(req)[COOKIE])
       if (uid) {
         const u = await users.getById(uid)
-        if (u) req.user = u
+        if (u && u.status !== 'suspended') {
+          req.user = u
+          req.authMethod = 'session'
+        }
       }
     } catch {
       /* fall through unauthenticated */
@@ -113,6 +134,83 @@ export function attachUser(users) {
 export function requireUser(req, res, next) {
   if (req.user) return next()
   res.status(401).json({ error: 'Sign in to continue' })
+}
+
+/* ----------------------------- guest identity ----------------------------- */
+
+const GUEST_COOKIE = 'ashrt_guest'
+const GUEST_DAYS = 90
+
+/**
+ * A stable, signed, anonymous id for a browser with no account. Used only to
+ * give each guest their own rate-limit budget and to remember which links they
+ * created so they can be offered on signup. It identifies a browser, not a
+ * person, and carries nothing else.
+ */
+export function guestId(req, res) {
+  const existing = parseCookies(req)[GUEST_COOKIE]
+  if (existing && existing.includes('.')) {
+    const [val, sig] = existing.split('.')
+    if (val && sig === sign(val)) return val
+  }
+  const fresh = crypto.randomBytes(12).toString('base64url')
+  if (res) {
+    res.cookie(GUEST_COOKIE, `${fresh}.${sign(fresh)}`, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: GUEST_DAYS * 864e5,
+    })
+  }
+  return fresh
+}
+
+/* ------------------------------ admin access ------------------------------ */
+
+/**
+ * Bootstrap allowlist. This is the only place an email grants privilege, it is
+ * read server-side only, and it exists so the first admin can be created
+ * without editing the datastore by hand. Once a matching account signs in the
+ * role is written to the user record and the env var can be removed.
+ */
+const ADMIN_EMAILS = new Set(
+  String(process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
+)
+
+export function isBootstrapAdmin(email) {
+  return ADMIN_EMAILS.has(String(email || '').trim().toLowerCase())
+}
+
+/** Authoritative admin check. Never call this from, or mirror it in, the client. */
+export function isAdmin(user) {
+  if (!user || user.status === 'suspended') return false
+  return user.role === 'admin' || isBootstrapAdmin(user.email)
+}
+
+/**
+ * Gate for every admin route. Answers 404 rather than 403 so the existence of
+ * the admin surface is not confirmed to someone probing for it.
+ */
+export function requireAdmin(req, res, next) {
+  if (isAdmin(req.user)) return next()
+  if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' })
+  return res.status(404).type('html').send('<h1>404</h1>')
+}
+
+/**
+ * Promote a bootstrap-allowlisted account the first time it signs in, so the
+ * role lives on the record and the allowlist becomes optional.
+ */
+export async function syncAdminRole(user, users) {
+  if (user.role !== 'admin' && isBootstrapAdmin(user.email)) {
+    user.role = 'admin'
+    await users.update(user)
+  }
+  return user
 }
 
 /* ---------------------------------- OAuth --------------------------------- */

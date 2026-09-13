@@ -33,7 +33,7 @@ function render() {
   $('m-clicks').textContent = data.clicks.toLocaleString()
   $('m-visitors').textContent = data.visitors.toLocaleString()
   const tc = topKey(data.countries)
-  $('m-country').textContent = tc ? `${Charts.flag(tc)} ${tc}` : '—'
+  $('m-country').textContent = tc ? `${Charts.flag(tc)} ${Charts.countryName(tc)}` : '—'
   $('m-device').textContent = cap(topKey(data.devices)) || '—'
   renderChart()
   Charts.barList($('referrers'), topEntries(data.referrers, 6))

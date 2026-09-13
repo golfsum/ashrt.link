@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Report an ashrt.link short link that points to phishing, malware, spam or other abuse." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+    <title>Report a link · ashrt.link</title>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <a class="logo" href="/">
+          <svg viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="8" fill="#14141b" stroke="#2a2a38" />
+            <path d="M13 19l6-6M12.5 14.5l-2 2a3.5 3.5 0 0 0 5 5l2-2M19.5 17.5l2-2a3.5 3.5 0 0 0-5-5l-2 2"
+              fill="none" stroke="#818cf8" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          ashrt<span class="dot">.link</span>
+        </a>
+        <nav class="nav"><a href="/">Home</a></nav>
+      </header>
+
+      <div class="auth-card">
+        <h1>Report a link</h1>
+        <p class="auth-sub">
+          If an ashrt.link short link points somewhere harmful, tell us and we will review it.
+          You do not need an account.
+        </p>
+
+        <form id="form" class="auth-form" novalidate>
+          <label class="field-label" for="link">Short link</label>
+          <input id="link" type="text" placeholder="ashrt.link/abc123" autocomplete="off" required />
+
+          <label class="field-label" for="reason">What is wrong with it</label>
+          <select id="reason" class="modal-select">
+            <option value="phishing">Phishing or a fake login page</option>
+            <option value="malware">Malware or a harmful download</option>
+            <option value="scam">Scam or fraud</option>
+            <option value="spam">Spam</option>
+            <option value="adult">Adult content</option>
+            <option value="harassment">Harassment or abuse</option>
+            <option value="copyright">Copyright infringement</option>
+            <option value="other">Something else</option>
+          </select>
+
+          <label class="field-label" for="detail">Anything else (optional)</label>
+          <textarea id="detail" rows="4" maxlength="1000" placeholder="What did you see?"></textarea>
+
+          <div id="err" class="auth-err"></div>
+          <button id="submit" class="btn btn-block" type="submit">Submit report</button>
+        </form>
+
+        <div id="done" class="report-done" hidden>
+          <h2>Report received</h2>
+          <p>
+            Thanks. We review reports and disable links that break our terms.
+            We do not send updates on individual reports.
+          </p>
+          <a class="btn btn-ghost btn-block" href="/">Back to ashrt.link</a>
+        </div>
+
+        <p class="report-note">
+          Reporting a link flags it for a person to look at. Links are not removed
+          automatically on report count alone.
+        </p>
+      </div>
+
+      <footer>
+        <span>© 2026 ashrt.link</span>
+        <span class="foot-links"><a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></span>
+      </footer>
+    </div>
+    <script src="/report.js"></script>
+  </body>
+</html>

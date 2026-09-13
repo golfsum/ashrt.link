@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UTM Link Tracker - Build and Track UTM Links | ashrt.link</title>
+    <meta name="description" content="Build a UTM-tagged tracking link without hand-editing URLs, then see the clicks it gets. Free, no account needed." />
+    <link rel="canonical" href="https://www.ashrt.link/utm-link-tracker" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="ashrt.link" />
+    <meta property="og:url" content="https://www.ashrt.link/utm-link-tracker" />
+    <meta property="og:title" content="UTM Link Tracker - Build and Track UTM Links | ashrt.link" />
+    <meta property="og:description" content="Build a UTM-tagged tracking link without hand-editing URLs, then see the clicks it gets. Free, no account needed." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="UTM Link Tracker - Build and Track UTM Links | ashrt.link" />
+    <meta name="twitter:description" content="Build a UTM-tagged tracking link without hand-editing URLs, then see the clicks it gets. Free, no account needed." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <a class="logo" href="/">
+          <svg viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="8" fill="#14141b" stroke="#2a2a38" />
+            <path d="M13 19l6-6M12.5 14.5l-2 2a3.5 3.5 0 0 0 5 5l2-2M19.5 17.5l2-2a3.5 3.5 0 0 0-5-5l-2 2"
+              fill="none" stroke="#818cf8" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          ashrt<span class="dot">.link</span>
+        </a>
+        <nav id="nav" class="nav"></nav>
+      </header>
+
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <a href="/">Free link tracker</a> <span>/</span> <span>UTM link tracker</span>
+      </nav>
+
+      <section class="hero hero-tool">
+        <h1>UTM link tracker</h1>
+        <p class="hero-sub">Add UTM parameters to any URL and get a short trackable link back. See the clicks it earns, and keep your analytics tidy without hand-editing query strings.</p>
+      </section>
+
+      <section class="create" id="tool">
+        <form class="create-row" id="create-form">
+          <input id="url" type="text" inputmode="url" autocomplete="off"
+            placeholder="Paste your URL here" aria-label="URL to track" />
+          <button id="go" class="btn" type="submit">Create trackable link</button>
+        </form>
+        <div class="create-meta">
+          <button type="button" class="link-btn" id="more-toggle">Add a campaign or UTM tags</button>
+          <span class="hint-inline">No account needed. Your link works immediately.</span>
+        </div>
+        <div id="advanced" class="quick-advanced" hidden>
+          <div class="quick-fields">
+            <label>
+              <span>Custom link <em id="alias-lock">(free account)</em></span>
+              <input id="alias" class="mono" type="text" placeholder="spring-sale" />
+            </label>
+            <label><span>utm_source</span><input id="utm_source" type="text" placeholder="newsletter" /></label>
+            <label><span>utm_medium</span><input id="utm_medium" type="text" placeholder="email" /></label>
+            <label><span>utm_campaign</span><input id="utm_campaign" type="text" placeholder="spring_launch" /></label>
+          </div>
+        </div>
+        <div id="err" class="quick-err"></div>
+        <div id="result" class="tool-result" hidden>
+          <div class="tool-result-head">
+            <div>
+              <div class="tool-result-label">Your trackable link</div>
+              <a id="result-link" class="mono tool-result-url" href="#" target="_blank" rel="noreferrer"></a>
+            </div>
+            <div class="tool-result-actions">
+              <button type="button" class="btn" id="result-copy">Copy</button>
+              <a class="btn btn-ghost" id="result-stats" href="#">View analytics</a>
+              <button type="button" class="btn btn-ghost" id="result-qr">QR code</button>
+            </div>
+          </div>
+          <div class="tool-result-foot">
+            <span id="result-clicks">0 clicks so far</span>
+            <span id="result-expiry"></span>
+            <a class="tool-result-cta" href="/signup" id="result-save">Save this link to a free account</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="article">
+        <h2>What UTM parameters actually do</h2>
+        <p>
+          UTM parameters are five optional query-string values you bolt onto a URL.
+          They change nothing about the page. Their entire job is to survive the
+          click and show up in the destination site&rsquo;s analytics, so a visit can be
+          attributed to the thing that produced it.
+        </p>
+        <div class="param-table">
+          <div><code>utm_source</code><span>Where the traffic came from: <b>newsletter</b>, <b>instagram</b>, <b>partner-site</b>.</span></div>
+          <div><code>utm_medium</code><span>The kind of channel: <b>email</b>, <b>social</b>, <b>cpc</b>, <b>qr</b>.</span></div>
+          <div><code>utm_campaign</code><span>The specific push: <b>spring_launch</b>, <b>black_friday</b>.</span></div>
+          <div><code>utm_term</code><span>Paid keyword. Mostly used with search ads.</span></div>
+          <div><code>utm_content</code><span>Which variant, when two links point to the same place: <b>header_cta</b> vs <b>footer_cta</b>.</span></div>
+        </div>
+
+        <h2>Why pair UTM tags with a tracking link</h2>
+        <p>
+          UTM tags alone only report inside the destination&rsquo;s analytics, and only if
+          that site has analytics you can see. If you are posting a link to someone
+          else&rsquo;s page, an app store listing, a PDF or a booking system, the UTM tags
+          go somewhere you will never read.
+        </p>
+        <p>
+          A tracking link records the click on the way through. So you get both: the
+          UTM tags still arrive at the destination for whoever owns it, and you get
+          your own count of who clicked, from where, on what device, whether or not
+          you control the far end.
+        </p>
+        <p>
+          The tagged URL also stops being an eyesore. A link with five UTM parameters
+          is 200 characters of query string that looks untrustworthy in a message and
+          breaks across lines in print. The short link carries all of it invisibly.
+        </p>
+
+        <h2>Getting the naming right</h2>
+        <p>
+          The most common way UTM data becomes useless is inconsistency.
+          <code>Email</code>, <code>email</code> and <code>e-mail</code> are three
+          different sources in a report, and no tool will merge them for you. Pick
+          lowercase, pick one word per concept, and write it down somewhere before
+          the campaign rather than after.
+        </p>
+        <p>
+          Keep <code>utm_medium</code> to a small fixed vocabulary: email, social,
+          cpc, referral, qr, affiliate. The value of a medium is that it groups
+          sources together, and it cannot do that if every campaign invents new ones.
+        </p>
+
+        <h2>What this tool does with them</h2>
+        <p>
+          Enter your destination, open the options and fill in the tags you want. The
+          parameters are merged into the destination URL, preserving any query string
+          it already has, and the short link points at the tagged version. Nothing is
+          added that you did not type.
+        </p>
+      </section>
+
+      <section class="related">
+        <h2>Related</h2>
+        <div class="related-links">
+          <a href="/">Free link tracker</a>
+          <a href="/utm-link-tracker">UTM link tracker</a>
+          <a href="/qr-code-tracking">QR code tracking</a>
+        </div>
+      </section>
+
+      <div id="qr-modal" class="modal-backdrop">
+        <div class="modal">
+          <h3>QR code</h3>
+          <div id="qr-preview" class="qr-preview"></div>
+          <div id="qr-target" class="qr-target mono"></div>
+          <div class="modal-actions">
+            <a id="qr-png" class="btn btn-ghost" href="#" download>PNG</a>
+            <a id="qr-svg" class="btn btn-ghost" href="#" download>SVG</a>
+            <button id="qr-close" class="btn">Close</button>
+          </div>
+        </div>
+      </div>
+
+      <footer>
+        <span>© 2026 ashrt.link</span>
+        <span class="foot-links">
+          <a href="/privacy">Privacy</a> &middot;
+          <a href="/terms">Terms</a> &middot;
+          <a href="/report">Report a link</a>
+        </span>
+      </footer>
+    </div>
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "Free link tracker", "item": "https://www.ashrt.link/" },
+        { "@type": "ListItem", "position": 2, "name": "UTM link tracker", "item": "https://www.ashrt.link/utm-link-tracker" }
+      ]
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Do UTM parameters work with a short link?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. The tags are applied to the destination URL, and the redirect sends the visitor to the tagged version, so the destination analytics receives them exactly as if the full URL had been shared." }
+        },
+        {
+          "@type": "Question",
+          "name": "Which UTM parameters are required?",
+          "acceptedAnswer": { "@type": "Answer", "text": "None are required technically. In practice utm_source and utm_medium are the two that make a report readable, and utm_campaign is worth adding whenever you run more than one thing at a time." }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I see the UTM data myself?",
+          "acceptedAnswer": { "@type": "Answer", "text": "The tags are for the destination site analytics. The tracking link separately records the click, referrer, country and device for you, which is what you read when you do not control the destination." }
+        }
+      ]
+    }
+    </script>
+    <script src="/guest-store.js"></script>
+    <script src="/landing.js"></script>
+    <script src="/events.js"></script>
+  </body>
+</html>

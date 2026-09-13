@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+    <title>Overview · ashrt.link admin</title>
+  </head>
+  <body data-page="overview" class="admin-body">
+    <header class="admin-bar" id="adminbar"></header>
+    <main class="admin-main">
+      <div class="admin-head">
+        <h1>Overview</h1>
+        <div class="segment" id="range">
+          <button data-days="7">7 days</button>
+          <button data-days="30" class="active">30 days</button>
+          <button data-days="90">90 days</button>
+        </div>
+      </div>
+
+      <div id="kpis" class="admin-kpis"></div>
+
+      <section class="panel-card">
+        <div class="panel-head"><h2>Clicks across the service</h2></div>
+        <div id="chart-clicks" class="chart-wrap"></div>
+      </section>
+
+      <div class="grid-2">
+        <section class="panel-card">
+          <div class="panel-head"><h2>Accounts</h2></div>
+          <div id="accounts"></div>
+        </section>
+        <section class="panel-card">
+          <div class="panel-head"><h2>Links by status</h2></div>
+          <div id="linkstatus"></div>
+        </section>
+      </div>
+
+      <section class="panel-card">
+        <div class="panel-head">
+          <h2>Needs attention</h2>
+          <a class="head-link" href="/admin/abuse">Abuse centre</a>
+        </div>
+        <div id="attention"></div>
+      </section>
+    </main>
+    <script src="/admin/shell.js"></script>
+    <script src="/charts.js"></script>
+    <script src="/admin/overview.js"></script>
+  </body>
+</html>

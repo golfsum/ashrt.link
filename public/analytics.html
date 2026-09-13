@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -13,44 +14,109 @@
   <body data-page="analytics">
     <div class="app">
       <aside class="sidebar" id="sidebar"></aside>
+
       <main class="main">
         <div class="main-inner">
-          <header class="topbar">
+          <header class="topbar topbar-tight">
             <div>
               <h1>Analytics</h1>
-              <p class="sub">Clicks, visitors, and traffic sources across all your links.</p>
-            </div>
-            <div class="actions">
-              <div class="segment" id="range">
-                <button data-days="7" class="active">7 Days</button>
-                <button data-days="30">30 Days</button>
-                <button data-days="90">90 Days</button>
-              </div>
+              <p class="sub">Where your traffic comes from, across every link.</p>
             </div>
           </header>
 
-          <section class="cards">
-            <div class="card metric"><div class="label">Clicks (range)</div><div id="m-clicks" class="value">0</div></div>
-            <div class="card metric"><div class="label">Total Clicks</div><div id="m-total" class="value">0</div></div>
-            <div class="card metric"><div class="label">Unique Visitors</div><div id="m-visitors" class="value">0</div></div>
-            <div class="card metric"><div class="label">Avg / Day</div><div id="m-avg" class="value">0</div></div>
+          <section class="filters">
+            <select id="scope" class="toolbar-select"><option value="">All links</option></select>
+            <select id="campaign" class="toolbar-select"><option value="">All campaigns</option></select>
+            <div class="segment" id="range">
+              <button data-days="7">7 days</button>
+              <button data-days="30" class="active">30 days</button>
+              <button data-days="90">90 days</button>
+              <button data-days="0">All time</button>
+            </div>
           </section>
 
-          <section class="panel-card">
-            <div class="panel-head"><h2>Clicks Over Time</h2></div>
-            <div id="chart-clicks" class="chart-wrap"></div>
-          </section>
+          <div id="view" hidden>
+            <section class="cards">
+              <div class="card metric">
+                <div class="label">Clicks</div>
+                <div id="m-clicks" class="value">0</div>
+                <div id="d-clicks" class="metric-delta"></div>
+              </div>
+              <div class="card metric">
+                <div class="label">Unique visitors</div>
+                <div id="m-visitors" class="value">0</div>
+                <div class="metric-delta metric-delta-quiet" id="d-visitors">all time</div>
+              </div>
+              <div class="card metric">
+                <div class="label">Daily average</div>
+                <div id="m-avg" class="value">0</div>
+                <div class="metric-delta metric-delta-quiet" id="d-avg"></div>
+              </div>
+              <div class="card metric">
+                <div class="label">Bot hits <span class="label-hint">excluded</span></div>
+                <div id="m-bots" class="value">0</div>
+                <div class="metric-delta metric-delta-quiet">not counted as clicks</div>
+              </div>
+            </section>
 
-          <div class="grid-3">
-            <section class="panel-card"><div class="panel-head"><h2>Traffic Sources</h2></div><div id="referrers"></div></section>
-            <section class="panel-card"><div class="panel-head"><h2>Devices</h2></div><div id="devices"></div></section>
-            <section class="panel-card"><div class="panel-head"><h2>Top Countries</h2></div><div id="countries"></div></section>
+            <section class="panel-card">
+              <div class="panel-head"><h2>Clicks over time</h2></div>
+              <div id="chart-clicks" class="chart-wrap"></div>
+            </section>
+
+            <div class="grid-2">
+              <section class="panel-card">
+                <div class="panel-head"><h2>Top links</h2><a href="/links" class="head-link">All links</a></div>
+                <div id="top-links"></div>
+              </section>
+              <section class="panel-card">
+                <div class="panel-head"><h2>Top destinations</h2></div>
+                <div id="destinations"></div>
+              </section>
+            </div>
+
+            <div class="grid-2">
+              <section class="panel-card">
+                <div class="panel-head"><h2>Referrers</h2></div>
+                <div id="referrers"></div>
+              </section>
+              <section class="panel-card">
+                <div class="panel-head"><h2>Countries</h2></div>
+                <div id="countries"></div>
+              </section>
+            </div>
+
+            <div class="grid-3">
+              <section class="panel-card compact">
+                <div class="panel-head"><h2>Devices</h2></div>
+                <div id="devices"></div>
+              </section>
+              <section class="panel-card compact">
+                <div class="panel-head"><h2>Browsers</h2></div>
+                <div id="browsers"></div>
+              </section>
+              <section class="panel-card compact">
+                <div class="panel-head"><h2>Operating systems</h2></div>
+                <div id="os"></div>
+              </section>
+            </div>
+
+            <section class="panel-card">
+              <div class="panel-head"><h2>Bots and link previews</h2></div>
+              <div id="bots"></div>
+              <p class="admin-hint">
+                These fetched your links but are not people. Slack, X, Facebook,
+                Discord and iMessage all request a link to build its preview the
+                moment you post it. They are shown here and excluded everywhere else.
+              </p>
+            </section>
           </div>
 
-          <section class="panel-card" style="margin-top:16px">
-            <div class="panel-head"><h2>Top Links</h2><a href="/links" class="head-link">View all</a></div>
-            <div id="top-links"></div>
-          </section>
+          <div id="empty" class="empty-state" hidden>
+            <h2>No clicks in this range</h2>
+            <p id="empty-body">Once someone follows one of your links, the breakdown appears here.</p>
+            <a class="btn" href="/dashboard">Create a link</a>
+          </div>
         </div>
       </main>
     </div>

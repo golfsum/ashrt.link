@@ -1,8 +1,12 @@
 const $ = (id) => document.getElementById(id)
 
 const DEVICE_COLORS = { desktop: '#818CF8', mobile: '#34D399', tablet: '#FBBF24', other: '#6B7280' }
+
 let stats = null
+let campaigns = []
 let rangeDays = 7
+
+/* -------------------------------- helpers -------------------------------- */
 
 function greet(name) {
   const h = new Date().getHours()
@@ -10,18 +14,53 @@ function greet(name) {
   return `Good ${part}${name ? ', ' + name : ''}`
 }
 
-// Build a continuous daily series for the last `days`, filling gaps with 0.
-function seriesForRange(series, days) {
+const dayKey = (d) => d.toISOString().slice(0, 10)
+
+/** Continuous daily series for the last `days`, gaps filled with zero. */
+function seriesForRange(series, days, offset = 0) {
   const out = []
   const now = new Date()
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(now)
-    d.setDate(d.getDate() - i)
-    const key = d.toISOString().slice(0, 10)
-    const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    out.push({ label: days <= 1 ? 'Today' : label, value: series[key] || 0 })
+    d.setDate(d.getDate() - i - offset)
+    out.push({
+      label: days <= 1 ? 'Today' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      value: series[dayKey(d)] || 0,
+    })
   }
   return out
+}
+
+const sum = (points) => points.reduce((s, p) => s + p.value, 0)
+
+/**
+ * Period-over-period change, but only when it means something.
+ *
+ * A jump from 1 click to 3 is "+200%", which is noise dressed as a signal. We
+ * need a real baseline before showing a percentage, and metrics with no history
+ * at all (unique visitors, campaigns) never get one.
+ */
+const MIN_BASELINE = 10
+
+function delta(series, days) {
+  const current = sum(seriesForRange(series, days))
+  const previous = sum(seriesForRange(series, days, days))
+  if (previous < MIN_BASELINE) return { enough: false, current, previous }
+  const pct = Math.round(((current - previous) / previous) * 100)
+  return { enough: true, pct, current, previous }
+}
+
+function renderDelta(el, series, days, noun) {
+  const d = delta(series, days)
+  if (!d.enough) {
+    // Say what the number covers instead of inventing a comparison.
+    el.textContent = d.current ? `${d.current.toLocaleString()} in the last ${days} days` : ''
+    el.className = 'metric-delta metric-delta-quiet'
+    return
+  }
+  const up = d.pct >= 0
+  el.textContent = `${up ? '+' : ''}${d.pct}% vs previous ${days} days`
+  el.className = 'metric-delta ' + (d.pct === 0 ? 'metric-delta-quiet' : up ? 'metric-delta-up' : 'metric-delta-down')
 }
 
 function topEntries(obj, n) {
@@ -42,67 +81,94 @@ function timeAgo(ts) {
 }
 
 function activityText(a) {
-  if (a.type === 'created') return `Created <b>/${a.slug}</b>`
-  if (a.type === 'deleted') return `Deleted <b>/${a.slug}</b>`
-  if (a.type === 'milestone') return `<b>/${a.slug}</b> reached ${a.value.toLocaleString()} clicks`
-  return a.type
+  const slug = `<b>/${escapeHtml(a.slug)}</b>`
+  if (a.type === 'created') return `Created ${slug}`
+  if (a.type === 'edited') return `Edited ${slug}`
+  if (a.type === 'deleted') return `Deleted ${slug}`
+  if (a.type === 'claimed') return `Saved ${slug} to your account`
+  if (a.type === 'milestone') return `${slug} reached ${a.value.toLocaleString()} clicks`
+  return escapeHtml(a.type)
 }
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+}
+
+const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
+const shortDest = (url) => String(url).replace(/^https?:\/\//, '').slice(0, 60)
+
+/* -------------------------------- rendering ------------------------------- */
 
 function renderChart() {
   Charts.line($('chart-clicks'), seriesForRange(stats.series, rangeDays))
+
+  const bots = stats.totalBotClicks || 0
+  $('bot-note').textContent = bots
+    ? `${bots.toLocaleString()} bot and link-preview ${bots === 1 ? 'hit' : 'hits'} excluded from these numbers.`
+    : ''
 }
 
 function render() {
+  const hasData = stats.totalLinks > 0
+  $('onboarding').hidden = hasData
+  $('stats-view').hidden = !hasData
+  $('subtitle').textContent = hasData
+    ? 'Track every click and understand where your traffic comes from.'
+    : 'Create your first tracking link to see who clicks it.'
+  if (!hasData) return
+
   $('m-links').textContent = stats.totalLinks.toLocaleString()
   $('m-clicks').textContent = stats.totalClicks.toLocaleString()
   $('m-visitors').textContent = stats.uniqueVisitors.toLocaleString()
-  $('m-campaigns').textContent = '0'
+  $('m-campaigns').textContent = (stats.totalCampaigns || 0).toLocaleString()
+
+  renderDelta($('d-clicks'), stats.series, rangeDays)
+  renderDelta($('d-links'), stats.linksSeries || {}, rangeDays)
+  // Unique visitors and campaigns have no per-day history to compare against,
+  // so they get a plain description rather than a made-up percentage.
+  $('d-visitors').textContent = 'all time'
+  $('d-visitors').className = 'metric-delta metric-delta-quiet'
+  $('d-campaigns').textContent = campaigns.length ? `${campaigns.length} active` : 'none yet'
+  $('d-campaigns').className = 'metric-delta metric-delta-quiet'
 
   renderChart()
 
-  // Top links
   const tl = $('top-links')
-  if (!stats.topLinks.length) {
-    tl.innerHTML = '<div class="chart-empty">No links yet. Create your first one.</div>'
-  } else {
-    tl.innerHTML =
-      `<div class="tl-row tl-head"><span>Link</span><span>Clicks</span><span>Visitors</span></div>` +
+  tl.innerHTML = stats.topLinks.length
+    ? `<div class="tl-row tl-head"><span>Link</span><span>Clicks</span><span>Visitors</span></div>` +
       stats.topLinks
         .map(
           (l) => `<div class="tl-row">
-            <span class="tl-main"><a class="tl-slug" href="/${l.slug}" target="_blank" rel="noreferrer">/${l.slug}</a>
-              <span class="tl-url">${escapeHtml(l.url)}</span></span>
+            <span class="tl-main">
+              <a class="tl-slug" href="/link?slug=${encodeURIComponent(l.slug)}">/${escapeHtml(l.slug)}</a>
+              <span class="tl-url">${escapeHtml(l.title || shortDest(l.url))}</span>
+            </span>
             <span class="tl-metric">${l.clicks.toLocaleString()}</span>
             <span class="tl-metric">${l.visitors.toLocaleString()}</span>
           </div>`,
         )
         .join('')
-  }
+    : '<div class="chart-empty">No clicks yet. Share a link and they will show up here.</div>'
 
-  // Activity
-  const act = $('activity')
-  act.innerHTML = stats.activity.length
+  $('activity').innerHTML = stats.activity.length
     ? stats.activity
+        .slice(0, 8)
         .map(
           (a) => `<div class="activity-row"><span class="activity-dot"></span>
             <span>${activityText(a)}</span><span class="activity-time">${timeAgo(a.at)}</span></div>`,
         )
         .join('')
-    : '<div class="chart-empty">No activity yet</div>'
+    : '<div class="chart-empty">Nothing yet</div>'
 
-  // Referrers, devices, countries
-  Charts.barList($('referrers'), topEntries(stats.referrers, 6))
+  Charts.barList($('referrers'), topEntries(stats.referrers, 4))
   Charts.donut(
     $('devices'),
     ['desktop', 'mobile', 'tablet'].map((k) => ({ label: cap(k), value: stats.devices[k] || 0, color: DEVICE_COLORS[k] })),
   )
-  Charts.barList($('countries'), topEntries(stats.countries, 6), { flag: true })
+  Charts.barList($('countries'), topEntries(stats.countries, 4), { flag: true })
 }
 
-const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1)
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
-}
+/* --------------------------------- loading -------------------------------- */
 
 async function loadStats() {
   const res = await fetch('/api/stats')
@@ -111,45 +177,110 @@ async function loadStats() {
   render()
 }
 
-/* ------------------------------ create modal ------------------------------ */
+async function loadCampaigns() {
+  try {
+    campaigns = (await (await fetch('/api/campaigns')).json()).campaigns || []
+  } catch {
+    campaigns = []
+  }
+  $('quick-campaign').innerHTML =
+    '<option value="">No campaign</option>' +
+    campaigns.map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`).join('')
+}
 
-function openModal() {
-  $('m-err').textContent = ''
-  $('m-url').value = ''
-  $('m-alias').value = ''
-  $('modal').classList.add('show')
-  $('m-url').focus()
+/* ------------------------------ quick create ------------------------------ */
+
+function utmValues() {
+  const utm = {}
+  for (const key of ['utm_source', 'utm_medium', 'utm_campaign']) {
+    const v = $(key).value.trim()
+    if (v) utm[key] = v
+  }
+  return Object.keys(utm).length ? utm : undefined
 }
-function closeModal() {
-  $('modal').classList.remove('show')
-}
-async function createLink() {
-  const url = $('m-url').value.trim()
+
+async function createLink(e) {
+  e?.preventDefault()
+  const url = $('quick-url').value.trim()
   if (!url) return
-  $('m-create').disabled = true
-  $('m-create').textContent = 'Creating...'
+
+  $('quick-err').textContent = ''
+  $('quick-go').disabled = true
+  $('quick-go').textContent = 'Creating...'
+
   try {
     const res = await fetch('/api/links', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, alias: $('m-alias').value.trim() || undefined }),
+      body: JSON.stringify({
+        url,
+        alias: $('quick-alias').value.trim() || undefined,
+        title: $('quick-title').value.trim() || undefined,
+        campaign: $('quick-campaign').value || undefined,
+        utm: utmValues(),
+      }),
     })
     const data = await res.json()
     if (!res.ok) {
-      $('m-err').textContent = data.error || 'Could not create that link'
+      $('quick-err').textContent = data.error || 'Could not create that link'
+      if (data.needsUpgrade) $('quick-err').innerHTML += ' <a href="/account">See plans</a>'
       return
     }
-    closeModal()
+
+    $('quick-link').textContent = data.shortUrl.replace(/^https?:\/\//, '')
+    $('quick-link').href = data.shortUrl
+    $('quick-stats').href = `/link?slug=${encodeURIComponent(data.slug)}`
+    $('quick-result').hidden = false
+    $('quick-result').dataset.short = data.shortUrl
+    $('quick-result').dataset.slug = data.slug
+
+    // Clear only what should not carry over: the destination and its alias.
+    // Campaign and UTM values usually apply to the next few links too.
+    $('quick-url').value = ''
+    $('quick-alias').value = ''
+    $('quick-title').value = ''
+    $('quick-url').focus()
+
     await loadStats()
   } catch {
-    $('m-err').textContent = 'Network error. Try again.'
+    $('quick-err').textContent = 'Network error. Try again.'
   } finally {
-    $('m-create').disabled = false
-    $('m-create').textContent = 'Create'
+    $('quick-go').disabled = false
+    $('quick-go').textContent = 'Create link'
   }
 }
 
+function openQr() {
+  const short = $('quick-result').dataset.short
+  const slug = $('quick-result').dataset.slug
+  const d = encodeURIComponent(short)
+  $('qr-preview').innerHTML = `<img src="/api/qr?data=${d}&format=svg" alt="QR code for ${escapeHtml(slug)}" />`
+  $('qr-target').textContent = short
+  $('qr-png').href = `/api/qr?data=${d}&format=png&download=1&name=${encodeURIComponent(slug)}`
+  $('qr-svg').href = `/api/qr?data=${d}&format=svg&download=1&name=${encodeURIComponent(slug)}`
+  $('qr-modal').classList.add('show')
+}
+
 /* --------------------------------- wire up -------------------------------- */
+
+$('quick-form').addEventListener('submit', createLink)
+
+$('quick-more').addEventListener('click', () => {
+  const adv = $('quick-advanced')
+  adv.hidden = !adv.hidden
+  $('quick-more').textContent = adv.hidden ? 'More options' : 'Fewer options'
+  if (!adv.hidden) $('quick-alias').focus()
+})
+
+$('quick-copy').addEventListener('click', () => {
+  navigator.clipboard?.writeText($('quick-result').dataset.short).catch(() => {})
+  $('quick-copy').textContent = 'Copied'
+  setTimeout(() => ($('quick-copy').textContent = 'Copy'), 1200)
+})
+
+$('quick-qr').addEventListener('click', openQr)
+$('qr-close').addEventListener('click', () => $('qr-modal').classList.remove('show'))
+$('qr-modal').addEventListener('click', (e) => e.target === $('qr-modal') && $('qr-modal').classList.remove('show'))
 
 $('range').addEventListener('click', (e) => {
   const btn = e.target.closest('button')
@@ -157,20 +288,13 @@ $('range').addEventListener('click', (e) => {
   rangeDays = Number(btn.dataset.days)
   ;[...$('range').children].forEach((b) => b.classList.toggle('active', b === btn))
   renderChart()
+  renderDelta($('d-clicks'), stats.series, rangeDays)
+  renderDelta($('d-links'), stats.linksSeries || {}, rangeDays)
 })
-
-$('create-link').addEventListener('click', openModal)
-$('create-qr').addEventListener('click', () => (window.location.href = '/qr'))
-$('m-cancel').addEventListener('click', closeModal)
-$('m-create').addEventListener('click', createLink)
-$('m-url').addEventListener('keydown', (e) => e.key === 'Enter' && createLink())
-$('m-alias').addEventListener('keydown', (e) => e.key === 'Enter' && createLink())
-$('modal').addEventListener('click', (e) => e.target === $('modal') && closeModal())
 
 ;(async () => {
   const user = await window.shellReady
   if (!user) return
-  const name = (user.name || user.email || '').split('@')[0]
-  $('greeting').textContent = greet(name)
-  await loadStats()
+  $('greeting').textContent = greet((user.name || user.email || '').split('@')[0])
+  await Promise.all([loadCampaigns(), loadStats()])
 })()

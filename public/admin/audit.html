@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+    <title>Audit log · ashrt.link admin</title>
+  </head>
+  <body data-page="audit" class="admin-body">
+    <header class="admin-bar" id="adminbar"></header>
+    <main class="admin-main">
+      <div class="admin-head">
+        <h1>Audit log</h1>
+        <div class="admin-tools">
+          <select id="filter" class="toolbar-select">
+            <option value="">All actions</option>
+            <option value="user.suspend">User suspended</option>
+            <option value="user.restore">User restored</option>
+            <option value="user.revoke-key">API key revoked</option>
+            <option value="user.promote">User promoted</option>
+            <option value="user.demote">User demoted</option>
+            <option value="link.disable">Link disabled</option>
+            <option value="link.enable">Link enabled</option>
+            <option value="link.flag">Link flagged</option>
+            <option value="link.delete">Link deleted</option>
+            <option value="link.auto_flagged">Auto-flagged</option>
+            <option value="domain.blocked">Domain blocked</option>
+            <option value="domain.unblocked">Domain unblocked</option>
+            <option value="report.updated">Report updated</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-card">
+        <div class="atable atable-audit" id="rows"></div>
+        <div id="empty" class="chart-empty" style="display:none">Nothing logged yet.</div>
+      </div>
+      <div class="admin-more"><button id="more" class="btn btn-ghost" style="display:none">Load more</button></div>
+    </main>
+    <script src="/admin/shell.js"></script>
+    <script src="/admin/audit.js"></script>
+  </body>
+</html>

@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -13,53 +14,77 @@
   <body data-page="links">
     <div class="app">
       <aside class="sidebar" id="sidebar"></aside>
+
       <main class="main">
         <div class="main-inner">
-          <header class="topbar">
+          <header class="topbar topbar-tight">
             <div>
               <h1>Links</h1>
-              <p class="sub">Create, manage, and track all your short links.</p>
+              <p class="sub" id="summary">Every link you are tracking.</p>
             </div>
             <div class="actions">
-              <button id="create-link" class="btn">Create Link</button>
+              <button id="create-link" class="btn">New link</button>
             </div>
           </header>
 
-          <div class="toolbar">
-            <input id="search" class="toolbar-search" type="text" placeholder="Search links or destinations..." />
-            <select id="sort" class="toolbar-select">
-              <option value="new">Newest</option>
-              <option value="clicks">Most clicks</option>
-              <option value="visitors">Most visitors</option>
+          <section class="filters">
+            <input id="search" class="toolbar-search" type="search" placeholder="Search a short code, name or destination" />
+            <select id="status" class="toolbar-select">
+              <option value="">Any status</option>
+              <option value="active">Active</option>
+              <option value="flagged">Flagged</option>
+              <option value="disabled">Disabled</option>
+              <option value="expired">Expired</option>
             </select>
+            <select id="campaign" class="toolbar-select"><option value="">Any campaign</option></select>
+            <select id="sort" class="toolbar-select">
+              <option value="recent">Newest first</option>
+              <option value="clicks">Most clicks</option>
+            </select>
+          </section>
+
+          <div id="tagbar" class="tagbar"></div>
+
+          <div class="table-card">
+            <div class="ltable" id="rows"></div>
           </div>
 
-          <div class="panel-card table-card">
-            <div class="ltable">
-              <div class="ltable-head">
-                <span>Short URL</span>
-                <span>Destination</span>
-                <span class="num">Clicks</span>
-                <span class="num">Visitors</span>
-                <span>Created</span>
-                <span>Status</span>
-                <span></span>
-              </div>
-              <div id="rows"></div>
-              <div id="empty" class="chart-empty" style="display:none">No links yet. Create your first one.</div>
-            </div>
+          <div id="empty" class="empty-state" hidden>
+            <h2 id="empty-title">No links yet</h2>
+            <p id="empty-body">Create your first tracking link and it will appear here.</p>
+            <button class="btn" id="empty-create">Create a link</button>
           </div>
+
+          <div class="admin-more"><button id="more" class="btn btn-ghost" hidden>Load more</button></div>
         </div>
       </main>
     </div>
 
-    <!-- create / edit modal -->
     <div id="modal" class="modal-backdrop">
-      <div class="modal">
+      <div class="modal modal-wide">
         <h3 id="modal-title">Create a link</h3>
-        <input id="m-url" type="text" placeholder="https://example.com/your/long/link" />
-        <input id="m-alias" class="mono" type="text" placeholder="custom name (optional)" />
-        <select id="m-campaign" class="modal-select"><option value="">No campaign</option></select>
+        <div class="quick-fields">
+          <label class="field-wide">
+            <span>Destination URL</span>
+            <input id="m-url" type="text" inputmode="url" placeholder="https://example.com/your/long/link" />
+          </label>
+        </div>
+        <div class="quick-fields">
+          <label><span>Name (optional)</span><input id="m-title" type="text" placeholder="Spring sale, Instagram bio" /></label>
+          <label id="alias-field"><span>Custom link</span><input id="m-alias" class="mono" type="text" placeholder="spring-sale" /></label>
+          <label><span>Campaign</span><select id="m-campaign"><option value="">No campaign</option></select></label>
+        </div>
+        <div class="quick-fields">
+          <label class="field-wide"><span>Tags (comma separated)</span><input id="m-tags" type="text" placeholder="social, q3, paid" /></label>
+        </div>
+        <details id="m-utm-wrap">
+          <summary>UTM parameters</summary>
+          <div class="quick-fields">
+            <label><span>utm_source</span><input id="utm_source" type="text" placeholder="instagram" /></label>
+            <label><span>utm_medium</span><input id="utm_medium" type="text" placeholder="social" /></label>
+            <label><span>utm_campaign</span><input id="utm_campaign" type="text" placeholder="spring_sale" /></label>
+          </div>
+        </details>
         <div id="m-err" class="auth-err"></div>
         <div class="modal-actions">
           <button id="m-cancel" class="btn btn-ghost">Cancel</button>
@@ -68,17 +93,15 @@
       </div>
     </div>
 
-    <!-- qr modal -->
     <div id="qr-modal" class="modal-backdrop">
       <div class="modal">
         <h3>QR code</h3>
         <div id="qr-preview" class="qr-preview"></div>
         <div id="qr-target" class="qr-target mono"></div>
-        <div class="modal-actions qr-actions">
-          <a id="qr-png" class="btn btn-ghost" href="#">PNG</a>
-          <a id="qr-svg" class="btn btn-ghost" href="#">SVG</a>
-          <button id="qr-print" class="btn btn-ghost">Print</button>
-          <button id="qr-close" class="btn">Done</button>
+        <div class="modal-actions">
+          <a id="qr-png" class="btn btn-ghost" href="#" download>PNG</a>
+          <a id="qr-svg" class="btn btn-ghost" href="#" download>SVG</a>
+          <button id="qr-close" class="btn">Close</button>
         </div>
       </div>
     </div>

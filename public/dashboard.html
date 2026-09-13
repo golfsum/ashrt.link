@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -16,87 +17,156 @@
 
       <main class="main">
         <div class="main-inner">
-          <header class="topbar">
+          <header class="topbar topbar-tight">
             <div>
               <h1 id="greeting">Welcome</h1>
-              <p class="sub">Track every click and understand where your traffic comes from.</p>
-            </div>
-            <div class="actions">
-              <button id="create-link" class="btn">Create Link</button>
-              <button id="create-qr" class="btn btn-ghost">Create QR Code</button>
+              <p class="sub" id="subtitle">Track every click and understand where your traffic comes from.</p>
             </div>
           </header>
 
-          <section class="cards">
-            <div class="card metric">
-              <div class="label">Total Links</div>
-              <div id="m-links" class="value">0</div>
+          <!-- The first thing on the page is the thing people came to do. -->
+          <section class="quick-create">
+            <form class="quick-row" id="quick-form">
+              <input id="quick-url" type="text" inputmode="url" autocomplete="off"
+                placeholder="Paste a URL to track..." aria-label="URL to track" />
+              <button class="btn" id="quick-go" type="submit">Create link</button>
+            </form>
+            <div class="quick-meta">
+              <button type="button" class="link-btn" id="quick-more">More options</button>
+              <span class="quick-sep">·</span>
+              <a class="link-btn" href="/qr">Create a QR code</a>
+              <span id="quick-limit" class="quick-limit"></span>
             </div>
-            <div class="card metric">
-              <div class="label">Total Clicks</div>
-              <div id="m-clicks" class="value">0</div>
-            </div>
-            <div class="card metric">
-              <div class="label">Unique Visitors</div>
-              <div id="m-visitors" class="value">0</div>
-            </div>
-            <div class="card metric">
-              <div class="label">Campaigns</div>
-              <div id="m-campaigns" class="value">0</div>
-            </div>
-          </section>
 
-          <section class="panel-card">
-            <div class="panel-head">
-              <h2>Clicks Over Time</h2>
-              <div class="segment" id="range">
-                <button data-days="1">Today</button>
-                <button data-days="7" class="active">7 Days</button>
-                <button data-days="30">30 Days</button>
-                <button data-days="90">90 Days</button>
+            <div id="quick-advanced" class="quick-advanced" hidden>
+              <div class="quick-fields">
+                <label>
+                  <span>Custom link</span>
+                  <input id="quick-alias" class="mono" type="text" placeholder="spring-sale" />
+                </label>
+                <label>
+                  <span>Name</span>
+                  <input id="quick-title" type="text" placeholder="Spring sale, Instagram bio" />
+                </label>
+                <label>
+                  <span>Campaign</span>
+                  <select id="quick-campaign"><option value="">No campaign</option></select>
+                </label>
+              </div>
+              <div class="quick-fields">
+                <label><span>utm_source</span><input id="utm_source" type="text" placeholder="instagram" /></label>
+                <label><span>utm_medium</span><input id="utm_medium" type="text" placeholder="social" /></label>
+                <label><span>utm_campaign</span><input id="utm_campaign" type="text" placeholder="spring_sale" /></label>
               </div>
             </div>
-            <div id="chart-clicks" class="chart-wrap"></div>
+
+            <div id="quick-err" class="quick-err"></div>
+
+            <div id="quick-result" class="quick-result" hidden>
+              <div class="qr-line">
+                <a id="quick-link" class="mono" href="#" target="_blank" rel="noreferrer"></a>
+                <div class="qr-line-actions">
+                  <button type="button" class="btn btn-sm" id="quick-copy">Copy</button>
+                  <a class="btn btn-sm btn-ghost" id="quick-stats" href="#">Analytics</a>
+                  <button type="button" class="btn btn-sm btn-ghost" id="quick-qr">QR</button>
+                </div>
+              </div>
+            </div>
           </section>
 
-          <div class="grid-2">
-            <section class="panel-card">
-              <div class="panel-head"><h2>Most Clicked Links</h2><a href="#" data-soon class="head-link">View all</a></div>
-              <div id="top-links"></div>
-            </section>
-            <section class="panel-card">
-              <div class="panel-head"><h2>Recent Activity</h2></div>
-              <div id="activity"></div>
+          <!-- Everything below is replaced by onboarding until there is data. -->
+          <div id="onboarding" hidden>
+            <section class="onboard">
+              <h2>Start tracking your first link</h2>
+              <ol class="onboard-steps">
+                <li><b>Paste a URL</b> in the box above and create your link.</li>
+                <li><b>Share it</b> anywhere you would normally share the long one.</li>
+                <li><b>Watch the clicks</b> appear here, with country, device and referrer.</li>
+              </ol>
+              <p class="onboard-note">
+                Your stats show up on this page as soon as someone clicks. Bot and
+                link-preview traffic is counted separately, so the numbers are people.
+              </p>
             </section>
           </div>
 
-          <div class="grid-3">
-            <section class="panel-card">
-              <div class="panel-head"><h2>Top Referrers</h2></div>
-              <div id="referrers"></div>
+          <div id="stats-view" hidden>
+            <section class="cards">
+              <div class="card metric">
+                <div class="label">Total links</div>
+                <div id="m-links" class="value">0</div>
+                <div id="d-links" class="metric-delta"></div>
+              </div>
+              <div class="card metric">
+                <div class="label">Total clicks</div>
+                <div id="m-clicks" class="value">0</div>
+                <div id="d-clicks" class="metric-delta"></div>
+              </div>
+              <div class="card metric">
+                <div class="label">Unique visitors</div>
+                <div id="m-visitors" class="value">0</div>
+                <div id="d-visitors" class="metric-delta"></div>
+              </div>
+              <div class="card metric">
+                <div class="label">Campaigns</div>
+                <div id="m-campaigns" class="value">0</div>
+                <div id="d-campaigns" class="metric-delta"></div>
+              </div>
             </section>
+
             <section class="panel-card">
-              <div class="panel-head"><h2>Devices</h2></div>
-              <div id="devices"></div>
+              <div class="panel-head">
+                <h2>Clicks over time</h2>
+                <div class="segment" id="range">
+                  <button data-days="1">Today</button>
+                  <button data-days="7" class="active">7 days</button>
+                  <button data-days="30">30 days</button>
+                  <button data-days="90">90 days</button>
+                </div>
+              </div>
+              <div id="chart-clicks" class="chart-wrap"></div>
+              <div id="bot-note" class="chart-note"></div>
             </section>
-            <section class="panel-card">
-              <div class="panel-head"><h2>Top Countries</h2></div>
-              <div id="countries"></div>
-            </section>
+
+            <div class="grid-2">
+              <section class="panel-card">
+                <div class="panel-head"><h2>Most clicked links</h2><a href="/links" class="head-link">All links</a></div>
+                <div id="top-links"></div>
+              </section>
+              <section class="panel-card">
+                <div class="panel-head"><h2>Recent activity</h2></div>
+                <div id="activity"></div>
+              </section>
+            </div>
+
+            <div class="grid-3">
+              <section class="panel-card compact">
+                <div class="panel-head"><h2>Top referrers</h2><a href="/analytics" class="head-link">Full report</a></div>
+                <div id="referrers"></div>
+              </section>
+              <section class="panel-card compact">
+                <div class="panel-head"><h2>Devices</h2></div>
+                <div id="devices"></div>
+              </section>
+              <section class="panel-card compact">
+                <div class="panel-head"><h2>Top countries</h2><a href="/analytics" class="head-link">Full report</a></div>
+                <div id="countries"></div>
+              </section>
+            </div>
           </div>
         </div>
       </main>
     </div>
 
-    <div id="modal" class="modal-backdrop">
+    <div id="qr-modal" class="modal-backdrop">
       <div class="modal">
-        <h3>Create a link</h3>
-        <input id="m-url" type="text" placeholder="https://example.com/your/long/link" />
-        <input id="m-alias" class="mono" type="text" placeholder="custom name (optional)" />
-        <div id="m-err" class="auth-err"></div>
+        <h3>QR code</h3>
+        <div id="qr-preview" class="qr-preview"></div>
+        <div id="qr-target" class="qr-target mono"></div>
         <div class="modal-actions">
-          <button id="m-cancel" class="btn btn-ghost">Cancel</button>
-          <button id="m-create" class="btn">Create</button>
+          <a id="qr-png" class="btn btn-ghost" href="#" download>PNG</a>
+          <a id="qr-svg" class="btn btn-ghost" href="#" download>SVG</a>
+          <button id="qr-close" class="btn">Close</button>
         </div>
       </div>
     </div>
@@ -104,5 +174,6 @@
     <script src="/shell.js"></script>
     <script src="/charts.js"></script>
     <script src="/dashboard.js"></script>
+    <script src="/events.js"></script>
   </body>
 </html>

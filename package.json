@@ -8,7 +8,11 @@
   "scripts": {
     "build": "echo \"no build step\"",
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "test": "node --test \"test/*.test.js\"",
+    "test:watch": "node --test --watch \"test/*.test.js\"",
+    "migrate": "node scripts/migrate.js",
+    "migrate:dry": "node scripts/migrate.js --dry-run"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -17,5 +21,8 @@
     "express": "^4.21.1",
     "qrcode": "^1.5.4",
     "stripe": "^22.2.3"
+  },
+  "devDependencies": {
+    "supertest": "^7.2.2"
   }
 }

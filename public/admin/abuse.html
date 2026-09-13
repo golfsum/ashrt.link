@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+    <title>Abuse · ashrt.link admin</title>
+  </head>
+  <body data-page="abuse" class="admin-body">
+    <header class="admin-bar" id="adminbar"></header>
+    <main class="admin-main">
+      <div class="admin-head"><h1>Abuse</h1></div>
+
+      <section class="panel-card">
+        <div class="panel-head">
+          <h2>Reports</h2>
+          <div class="segment" id="repfilter">
+            <button data-status="new" class="active">New</button>
+            <button data-status="reviewing">Reviewing</button>
+            <button data-status="actioned">Actioned</button>
+            <button data-status="dismissed">Dismissed</button>
+            <button data-status="">All</button>
+          </div>
+        </div>
+        <div id="reports"></div>
+      </section>
+
+      <section class="panel-card">
+        <div class="panel-head"><h2>Flagged links</h2></div>
+        <div id="flagged"></div>
+      </section>
+
+      <section class="panel-card">
+        <div class="panel-head">
+          <h2>Blocked domains</h2>
+          <button id="add-block" class="btn btn-sm">Block a domain</button>
+        </div>
+        <div id="blocked"></div>
+      </section>
+    </main>
+    <script src="/admin/shell.js"></script>
+    <script src="/admin/abuse.js"></script>
+  </body>
+</html>

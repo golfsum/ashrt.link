@@ -27,11 +27,12 @@
 
       <article class="prose">
         <h1>Privacy Policy</h1>
-        <p class="prose-meta">Last updated: June 23, 2026</p>
+        <p class="prose-meta">Last updated: September 13, 2026</p>
 
         <p>
-          ashrt.link ("we", "us") is a URL shortener. This policy explains what we collect, why, and your choices.
-          By using the service you agree to this policy.
+          ashrt.link ("we", "us") is a link tracker: it creates short links that record a visit before
+          forwarding it. This policy explains what we collect, why, and your choices. By using the service
+          you agree to this policy.
         </p>
 
         <h2>Information we collect</h2>
@@ -39,11 +40,27 @@
           <li><b>Account information.</b> When you sign up we store your email address and name. If you register with a
             password, we store it only as a salted bcrypt hash, never in plain text. If you sign in with Google or
             GitHub, we receive your basic profile (name, email, and a provider account ID).</li>
-          <li><b>Links you create.</b> The destination URL, the short code/alias, and creation time.</li>
-          <li><b>Click data.</b> When someone follows a short link we increment a click count, record the time of the
-            last click, and keep a per-day click tally. We do not build advertising profiles of visitors.</li>
-          <li><b>Cookies.</b> A single signed, HttpOnly session cookie keeps you logged in. We don't use third-party
-            advertising or tracking cookies.</li>
+          <li><b>Links you create.</b> The destination URL, the short code or alias, an optional name, campaign and
+            tags, and the creation time. We also store a one-way hash of the IP address the link was created from,
+            which is used only for rate limiting and abuse investigation.</li>
+          <li><b>Click data.</b> When someone follows a short link we record the time, a per-day tally, and the
+            country, device type, browser, operating system and referring site taken from the request. We do not
+            build advertising profiles of visitors.</li>
+          <li><b>Visitor identifiers.</b> To tell a repeat visit from a new one we compute a one-way HMAC of the
+            visitor's IP address and user agent, keep only the first 16 characters, and store that. <b>We do not
+            store raw IP addresses anywhere.</b> The hash is salted with a secret that is specific to this
+            deployment, so it cannot be matched against a precomputed table or compared across services. It is
+            not reversible, and we cannot use it to identify anyone.</li>
+          <li><b>Bot traffic.</b> Automated requests (link previews from Slack, X, Facebook and similar, plus search
+            and AI crawlers, monitors and scripts) are identified from the user agent and counted separately. No
+            visitor identifier is computed for them.</li>
+          <li><b>Abuse reports.</b> If you report a link we store the report, the reason, any detail you write, and a
+            one-way hash of your IP address so the same person reporting repeatedly is not counted as many.</li>
+          <li><b>Cookies.</b> A signed, HttpOnly session cookie keeps you logged in. Visitors who create a link
+            without an account also get a signed, HttpOnly cookie containing a random identifier; it exists only to
+            give each browser its own rate-limit allowance and to offer your links to you if you later sign up. It
+            contains nothing about you. We do not use third-party advertising or tracking cookies, and the short
+            links themselves set no cookie on the people who click them.</li>
           <li><b>Payment information.</b> If you subscribe to Pro, payment is handled by Stripe. We never see or store
             your card number. We keep only a Stripe customer/subscription reference and your plan status.</li>
         </ul>
@@ -71,6 +88,26 @@
           We keep your account, links, and their stats until you delete them or close your account. You can delete
           individual links from your dashboard at any time. To delete your account and associated data, contact us at
           the address below.
+        </p>
+        <ul>
+          <li><b>Links created without an account</b> are kept for 30 days and then stop working. Save one to a free
+            account and it is kept until you delete it.</li>
+          <li><b>Per-day click history</b> on a link is kept for the most recent 400 days. Lifetime totals are
+            kept for as long as the link is.</li>
+          <li><b>Visitor identifier hashes</b> are stored in a probabilistic counting structure, which holds an
+            approximation of how many distinct visitors there were rather than a list of them. Individual visits
+            cannot be retrieved from it.</li>
+          <li><b>Abuse reports and administrative records</b> are kept while they are relevant to keeping the
+            service safe.</li>
+        </ul>
+
+        <h2>What we cannot tell you about a visitor</h2>
+        <p>
+          It is worth being explicit, because link tracking is often assumed to do more than it does. We cannot tell
+          you a visitor's name, email address, employer, or exact location, and we do not attempt to. We do not
+          fingerprint browsers, we do not set cookies on people who click your links, and we do not follow anyone
+          across sites. What you get is aggregate: how many, roughly where, on what kind of device, and from which
+          referring site.
         </p>
 
         <h2>Your rights</h2>

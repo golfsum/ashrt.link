@@ -18,8 +18,9 @@ const PRICES = {
 
 const stripe = SECRET ? new Stripe(SECRET) : null
 
-export const FREE_LINK_LIMIT = 25
-export const PAID_PLANS = ['pro', 'business']
+// Plan shape and limits live in lib/plans.js. Re-exported here so older imports
+// keep working, but there is only one definition.
+export { PAID_PLANS, FREE_LINK_LIMIT } from './lib/plans.js'
 
 export function billingEnabled() {
   return Boolean(stripe && (PRICES.pro || PRICES.business))

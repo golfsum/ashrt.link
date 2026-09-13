@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+    <title>Billing · ashrt.link admin</title>
+  </head>
+  <body data-page="billing" class="admin-body">
+    <header class="admin-bar" id="adminbar"></header>
+    <main class="admin-main">
+      <div class="admin-head">
+        <div>
+          <h1>Billing</h1>
+          <p class="admin-sub">Plan mix and payment state. Stripe remains the source of truth.</p>
+        </div>
+      </div>
+
+      <div id="disabled" class="admin-alert admin-alert-warn" hidden>
+        <b>Billing is not configured.</b>
+        No Stripe key or price ids are set, so nobody can subscribe and every
+        account below is on the free plan.
+      </div>
+
+      <div id="kpis" class="admin-kpis"></div>
+
+      <div class="grid-2">
+        <section class="panel-card">
+          <div class="panel-head"><h2>Plan mix</h2></div>
+          <div id="plans"></div>
+        </section>
+        <section class="panel-card">
+          <div class="panel-head"><h2>Subscription status</h2></div>
+          <div id="statuses"></div>
+        </section>
+      </div>
+
+      <section class="panel-card">
+        <div class="panel-head">
+          <h2>Needs attention</h2>
+          <span class="head-note" id="problem-count"></span>
+        </div>
+        <div class="atable atable-users" id="problems"></div>
+      </section>
+
+      <p class="admin-hint" id="note"></p>
+    </main>
+    <script src="/admin/shell.js"></script>
+    <script src="/admin/billing.js"></script>
+  </body>
+</html>

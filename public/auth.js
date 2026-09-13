@@ -49,6 +49,13 @@ $('form').addEventListener('submit', async (e) => {
   }
   if (isSignup) body.name = $('name').value.trim()
 
+  // Hand over any links this browser made as a guest so the new account owns
+  // them. ?claim=<token> covers arriving straight from a shared stats page.
+  const fromUrl = new URLSearchParams(location.search).get('claim')
+  const tokens = new Set(window.GuestLinks ? window.GuestLinks.tokens() : [])
+  if (fromUrl) tokens.add(fromUrl)
+  if (tokens.size) body.claimTokens = [...tokens]
+
   $('submit').disabled = true
   $('submit').textContent = isSignup ? 'Creating...' : 'Logging in...'
   try {
@@ -62,6 +69,8 @@ $('form').addEventListener('submit', async (e) => {
       $('err').textContent = data.error || 'Something went wrong'
       return
     }
+    // The tokens have done their job; the links belong to an account now.
+    if (window.GuestLinks) window.GuestLinks.clear()
     window.location.href = '/dashboard'
   } catch {
     $('err').textContent = 'Network error. Try again.'

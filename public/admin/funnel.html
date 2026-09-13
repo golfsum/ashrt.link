@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+    <title>Funnel · ashrt.link admin</title>
+  </head>
+  <body data-page="funnel" class="admin-body">
+    <header class="admin-bar" id="adminbar"></header>
+    <main class="admin-main">
+      <div class="admin-head">
+        <div>
+          <h1>Funnel</h1>
+          <p class="admin-sub">Does search traffic become users.</p>
+        </div>
+        <div class="segment" id="range">
+          <button data-days="7">7 days</button>
+          <button data-days="30" class="active">30 days</button>
+          <button data-days="90">90 days</button>
+        </div>
+      </div>
+
+      <div id="search-verdict"></div>
+
+      <section class="panel-card">
+        <div class="panel-head"><h2>From arrival to subscription</h2></div>
+        <div id="funnel"></div>
+        <p class="admin-hint">
+          Bot and crawler traffic is excluded from every stage, so the top of the
+          funnel is people. A step shows no rate until the stage above it has at
+          least 20 events, because a percentage of five visits is not a rate.
+        </p>
+      </section>
+
+      <div class="grid-2">
+        <section class="panel-card">
+          <div class="panel-head"><h2>Visitors over time</h2></div>
+          <div id="chart-visitors" class="chart-wrap"></div>
+        </section>
+        <section class="panel-card">
+          <div class="panel-head"><h2>Signups over time</h2></div>
+          <div id="chart-signups" class="chart-wrap"></div>
+        </section>
+      </div>
+
+      <div class="grid-3">
+        <section class="panel-card compact">
+          <div class="panel-head"><h2>Where visitors came from</h2></div>
+          <div id="arrivals"></div>
+        </section>
+        <section class="panel-card compact">
+          <div class="panel-head"><h2>Where signups came from</h2></div>
+          <div id="signup-sources"></div>
+        </section>
+        <section class="panel-card compact">
+          <div class="panel-head"><h2>Where subscribers came from</h2></div>
+          <div id="sub-sources"></div>
+        </section>
+      </div>
+
+      <section class="panel-card">
+        <div class="panel-head"><h2>All events</h2></div>
+        <div class="atable atable-audit" id="events"></div>
+        <p class="admin-hint">
+          Counters only. There is no per-person event log, nothing joined back to
+          an individual, and no raw referrer stored: each event is a daily tally
+          plus a coarse source bucket.
+        </p>
+      </section>
+    </main>
+    <script src="/admin/shell.js"></script>
+    <script src="/charts.js"></script>
+    <script src="/admin/funnel.js"></script>
+  </body>
+</html>
