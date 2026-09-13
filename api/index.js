@@ -3,7 +3,7 @@
 import express from 'express'
 
 import app from '../server.js'
-import { users } from '../store.js'
+import { store, users } from '../store.js'
 import { guestId, readToken } from '../auth.js'
 import { clientIp, hashClient } from '../lib/ratelimit.js'
 import { runStartupMaintenance } from '../lib/startup-maintenance.js'
@@ -42,6 +42,108 @@ function verificationView(user) {
   const verified = isEmailVerified(user)
   return { emailVerified: verified, verificationRequired: !verified }
 }
+
+function abuseFlagged(user) {
+  const flags = new Set(user?.flags || [])
+  return (
+    flags.has('automatic-abuse-quarantine') ||
+    flags.has('blocked-destination') ||
+    flags.has('abuse') ||
+    flags.has('malware') ||
+    flags.has('phishing') ||
+    flags.has('spam')
+  )
+}
+
+function isRealCustomer(user) {
+  if (!user || user.role === 'admin') return false
+  if ((user.status || 'active') !== 'active') return false
+  if (abuseFlagged(user)) return false
+  return isEmailVerified(user)
+}
+
+function includeInCleanStats(link, userMap) {
+  if (!link) return false
+  if (link.owner && !isRealCustomer(userMap.get(link.owner))) return false
+  if (link.status === 'disabled' || link.status === 'flagged') return false
+  if ((link.flagScore || 0) >= 4 || (link.flagSignals || []).length) return false
+  return true
+}
+
+// Admin overview defaults to trusted business metrics. Raw totals are preserved
+// separately so abuse is still visible without being mistaken for customers.
+outer.use('/api/admin/overview', (_req, res, next) => {
+  const originalJson = res.json.bind(res)
+  res.json = (body) => {
+    if (res.statusCode >= 400 || !body?.users || !body?.links || !body?.clicks) return originalJson(body)
+    ;(async () => {
+      try {
+        const [allUsers, allLinks] = await Promise.all([users.all(), store.all()])
+        const userMap = new Map(allUsers.map((u) => [u.id, u]))
+        const real = allUsers.filter(isRealCustomer)
+        const excluded = allUsers.filter((u) => u.role !== 'admin' && !isRealCustomer(u))
+        const cleanLinks = allLinks.filter((l) => includeInCleanStats(l, userMap))
+        const now = Date.now()
+        const todayStart = new Date().setUTCHours(0, 0, 0, 0)
+        const cleanSeries = {}
+        for (const link of cleanLinks) {
+          for (const [day, count] of Object.entries(link.daily || {})) {
+            cleanSeries[day] = (cleanSeries[day] || 0) + (Number(count) || 0)
+          }
+        }
+        const days = Number(body.days) || 30
+        const series = {}
+        for (let i = days - 1; i >= 0; i--) {
+          const key = new Date(now - i * DAY_MS).toISOString().slice(0, 10)
+          series[key] = cleanSeries[key] || 0
+        }
+        const today = new Date().toISOString().slice(0, 10)
+        const raw = { users: body.users.total, links: body.links.total, clicks: body.clicks.total }
+        const byPlan = (plan) => real.filter((u) => (u.plan || 'free') === plan).length
+        const guest = cleanLinks.filter((l) => !l.owner).length
+
+        body.raw = raw
+        body.users = {
+          ...body.users,
+          total: real.length,
+          today: real.filter((u) => (u.createdAt || 0) >= todayStart).length,
+          last7: real.filter((u) => (u.createdAt || 0) >= now - 7 * DAY_MS).length,
+          last30: real.filter((u) => (u.createdAt || 0) >= now - 30 * DAY_MS).length,
+          free: byPlan('free'),
+          pro: byPlan('pro'),
+          business: byPlan('business'),
+          excluded: excluded.length,
+          abuseExcluded: excluded.filter((u) => abuseFlagged(u) || (u.status || 'active') === 'suspended').length,
+          unverified: excluded.filter((u) => (u.status || 'active') === 'active' && !abuseFlagged(u) && !isEmailVerified(u)).length,
+          rawTotal: allUsers.filter((u) => u.role !== 'admin').length,
+        }
+        body.links = {
+          ...body.links,
+          total: cleanLinks.length,
+          active: cleanLinks.filter((l) => (l.status || 'active') === 'active').length,
+          guest,
+          owned: cleanLinks.length - guest,
+          rawTotal: allLinks.length,
+        }
+        body.clicks = {
+          ...body.clicks,
+          total: cleanLinks.reduce((sum, l) => sum + (Number(l.clicks) || 0), 0),
+          today: cleanSeries[today] || 0,
+          window: Object.values(series).reduce((sum, n) => sum + n, 0),
+          rawTotal: raw.clicks,
+        }
+        body.series = series
+        body.billing = { ...body.billing, paid: byPlan('pro') + byPlan('business'), free: byPlan('free') }
+        body.statsFilter = 'Verified active customers; suspended and abuse accounts excluded'
+      } catch (err) {
+        console.error('[admin stats filter]', err.message)
+      }
+      originalJson(body)
+    })()
+    return res
+  }
+  next()
+})
 
 outer.use('/auth/register', async (req, res, next) => {
   if (!emailVerificationConfigured()) {
