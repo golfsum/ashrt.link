@@ -168,23 +168,22 @@ test('link analytics require a session', async () => {
 
 /* ------------------------------- API keys --------------------------------- */
 
-test('an API key authenticates, and a rotated key stops working', async () => {
+test('an API key authenticates, and a revoked key stops working', async () => {
   const { cookie } = await signup()
-  const account = await request(app).get('/api/account').set('Cookie', cookie)
-  const oldKey = account.body.user.apiKey
-  assert.ok(oldKey)
+  const made = await request(app).post('/api/keys').set('Cookie', cookie).send({ name: 'Test' })
+  const key = made.body.key
+  assert.ok(key)
 
-  const ok = await request(app).post('/api/links').set('x-api-key', oldKey).send({ url: 'example.com/api' })
+  const ok = await request(app).post('/api/links').set('x-api-key', key).send({ url: 'example.com/api' })
   assert.equal(ok.status, 200)
 
-  const rotated = await request(app).post('/api/account/rotate-key').set('Cookie', cookie)
-  const newKey = rotated.body.apiKey
-  assert.notEqual(newKey, oldKey)
+  await request(app).delete(`/api/keys/${made.body.created.id}`).set('Cookie', cookie)
 
-  const stale = await request(app).post('/api/links').set('x-api-key', oldKey).send({ url: 'example.com/nope' })
+  const stale = await request(app).post('/api/links').set('x-api-key', key).send({ url: 'example.com/nope' })
   assert.equal(stale.status, 401, 'the old key must stop working, not fall back to anonymous')
 
-  const fresh = await request(app).post('/api/links').set('x-api-key', newKey).send({ url: 'example.com/yes' })
+  const replacement = (await request(app).post('/api/keys').set('Cookie', cookie).send({ name: 'New' })).body.key
+  const fresh = await request(app).post('/api/links').set('x-api-key', replacement).send({ url: 'example.com/yes' })
   assert.equal(fresh.status, 200)
 })
 
@@ -465,8 +464,18 @@ test('the sitemap does not advertise a page that does not exist', async () => {
   }
 })
 
+/** Every page meant to be found in search. Add a page, add it here. */
+const PUBLIC_PAGES = [
+  '/',
+  '/pricing',
+  '/utm-link-tracker',
+  '/qr-code-tracking',
+  '/qr-code-generator',
+  '/bitly-alternative',
+]
+
 test('public pages declare a canonical URL', async () => {
-  for (const path of ['/', '/utm-link-tracker', '/qr-code-tracking']) {
+  for (const path of PUBLIC_PAGES) {
     const res = await request(app).get(path)
     assert.equal(res.status, 200, path)
     assert.match(res.text, /<link rel="canonical" href="https:\/\/www\.ashrt\.link/, `${path} needs a canonical`)
@@ -482,7 +491,7 @@ test('the homepage is titled for the category it targets', async () => {
 })
 
 test('structured data on every public page is valid JSON', async () => {
-  for (const path of ['/', '/utm-link-tracker', '/qr-code-tracking']) {
+  for (const path of PUBLIC_PAGES) {
     const res = await request(app).get(path)
     const blocks = [...res.text.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
     assert.ok(blocks.length > 0, `${path} should carry structured data`)
@@ -492,8 +501,47 @@ test('structured data on every public page is valid JSON', async () => {
   }
 })
 
+
+test('every public page has a title and description of its own', async () => {
+  const titles = new Set()
+  const descriptions = new Set()
+  for (const path of PUBLIC_PAGES) {
+    const res = await request(app).get(path)
+    assert.equal(res.status, 200, path)
+    const title = res.text.match(/<title>([^<]+)<\/title>/)?.[1]
+    const desc = res.text.match(/<meta name="description" content="([^"]+)"/)?.[1]
+    assert.ok(title, `${path} needs a title`)
+    assert.ok(desc && desc.length > 60, `${path} needs a real description`)
+    // Duplicate titles are the signature of thin keyword-swapped pages.
+    assert.ok(!titles.has(title), `${path} shares its title with another page`)
+    assert.ok(!descriptions.has(desc), `${path} shares its description with another page`)
+    titles.add(title)
+    descriptions.add(desc)
+  }
+})
+
+test('every public page links to at least two others', async () => {
+  // A page nothing links to and that links nowhere is an orphan, and it is how
+  // a set of landing pages ends up reading as a doorway farm.
+  for (const path of PUBLIC_PAGES) {
+    const res = await request(app).get(path)
+    const internal = new Set(
+      [...res.text.matchAll(/href="(\/[a-z0-9-]*)"/g)].map((m) => m[1]).filter((p) => p !== path),
+    )
+    assert.ok(internal.size >= 2, `${path} only links to ${internal.size} other page(s)`)
+  }
+})
+
+test('the comparison page dates its competitor figures', async () => {
+  // Competitor pricing changes. A comparison with no date on it becomes a false
+  // claim on its own, without anybody editing it.
+  const res = await request(app).get('/bitly-alternative')
+  assert.match(res.text, /checked on\s*<b>\d{1,2} \w+ \d{4}<\/b>/)
+})
+
 test('landing pages embed the working tool, not a picture of one', async () => {
-  for (const path of ['/utm-link-tracker', '/qr-code-tracking']) {
+  // Pricing is the exception: it is a page about the product, not a tool page.
+  for (const path of ['/utm-link-tracker', '/qr-code-tracking', '/qr-code-generator', '/bitly-alternative']) {
     const res = await request(app).get(path)
     assert.match(res.text, /id="create-form"/, `${path} should have the real form`)
     assert.match(res.text, /src="\/landing\.js"/, `${path} should load the tool script`)
@@ -502,23 +550,63 @@ test('landing pages embed the working tool, not a picture of one', async () => {
 
 /* ---------------------------- custom domains ------------------------------ */
 
-test('custom domains stay off until the deployment switches them on', async () => {
+test('the plan allowance is spent by creating links, not by keeping them', async () => {
+  const { PLANS } = await import('../lib/plans.js')
+  const real = PLANS.free.limits.linksPerMonth
+  PLANS.free.limits.linksPerMonth = 2
+  try {
+    const { cookie } = await signup()
+    assert.equal((await createAs(cookie, { url: 'example.com/one' })).status, 200)
+    assert.equal((await createAs(cookie, { url: 'example.com/two' })).status, 200)
+
+    const third = await createAs(cookie, { url: 'example.com/three' })
+    assert.equal(third.status, 402, 'out of allowance is an upgrade prompt, not a rate limit')
+    assert.equal(third.body.needsUpgrade, true)
+    assert.match(third.body.error, /last 30 days/)
+    assert.ok(third.body.resetAt > Date.now(), 'and it says when it resets')
+
+    // Deleting a link does not buy allowance back. The allowance is for
+    // creating; what matters is that the two links already made still work.
+    const mine = await request(app).get('/api/links').set('Cookie', cookie)
+    assert.equal(mine.body.links.length, 2)
+    await request(app).delete(`/api/links/${mine.body.links[0].slug}`).set('Cookie', cookie)
+    assert.equal((await createAs(cookie, { url: 'example.com/four' })).status, 402)
+  } finally {
+    PLANS.free.limits.linksPerMonth = real
+  }
+})
+
+test('a bad URL does not cost any allowance', async () => {
+  const { PLANS } = await import('../lib/plans.js')
+  const real = PLANS.free.limits.linksPerMonth
+  PLANS.free.limits.linksPerMonth = 2
+  try {
+    const { cookie } = await signup()
+    for (const bad of ['not a url', 'http://127.0.0.1/x', 'javascript:alert(1)']) {
+      assert.equal((await createAs(cookie, { url: bad })).status, 400)
+    }
+    assert.equal((await createAs(cookie, { url: 'example.com/still-works' })).status, 200)
+    assert.equal((await createAs(cookie, { url: 'example.com/second' })).status, 200)
+  } finally {
+    PLANS.free.limits.linksPerMonth = real
+  }
+})
+
+test('a free account is told to upgrade, not that the feature is broken', async () => {
   const { cookie } = await signup()
   const status = await request(app).get('/api/domains').set('Cookie', cookie)
-  assert.equal(status.body.available, false)
+  assert.equal(status.body.available, true, 'the feature ships on')
+  assert.equal(status.body.entitled, false, 'but not on this plan')
 
   const add = await request(app)
     .post('/api/domains')
     .set('Cookie', cookie)
     .send({ domain: 'links.example.com' })
-  assert.equal(add.status, 503, 'not a plan problem, so not a 402')
-  assert.equal(add.body.unavailable, true)
-
-  const verify = await request(app).post('/api/domains/links.example.com/verify').set('Cookie', cookie)
-  assert.equal(verify.status, 503, 'verification is gated by the same switch')
+  assert.equal(add.status, 402)
+  assert.equal(add.body.needsUpgrade, true)
 })
 
-test('links are minted on the canonical host while custom domains are off', async () => {
+test('links are minted on the canonical host when an account has no domain', async () => {
   const { cookie } = await signup()
   const made = await createAs(cookie, { url: 'example.com/branded' })
   assert.match(made.body.shortUrl, /^http:\/\/localhost:4999\//)

@@ -13,6 +13,7 @@
     { id: 'billing', label: 'Billing', href: '/admin/billing' },
     { id: 'abuse', label: 'Abuse', href: '/admin/abuse' },
     { id: 'audit', label: 'Audit log', href: '/admin/audit' },
+    { id: 'health', label: 'Health', href: '/admin/health' },
   ]
 
   const page = document.body.dataset.page || ''

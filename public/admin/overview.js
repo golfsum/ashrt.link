@@ -99,6 +99,29 @@ async function renderAttention() {
     )
   }
 
+  const broken = data?.brokenLinksTotal || 0
+  if (broken) {
+    items.push(
+      `<a class="attn-row" href="/admin/links">
+        <span class="attn-count">${num(broken)}</span>
+        <span>link ${broken === 1 ? 'destination has' : 'destinations have'} stopped answering
+          (${(data.brokenLinks || []).slice(0, 3).map((b) => escapeHtml(b.slug)).join(', ')}${broken > 3 ? ', …' : ''})</span>
+      </a>`,
+    )
+  }
+
+  // Domains where the customer has done everything and we have not.
+  const waiting = data?.domainsWaiting || []
+  if (waiting.length) {
+    items.push(
+      `<a class="attn-row" href="/admin/users">
+        <span class="attn-count">${num(waiting.length)}</span>
+        <span>custom ${waiting.length === 1 ? 'domain' : 'domains'} verified and waiting to be attached
+          (${waiting.slice(0, 3).map((d) => escapeHtml(d.domain)).join(', ')}${waiting.length > 3 ? ', …' : ''})</span>
+      </a>`,
+    )
+  }
+
   $('attention').innerHTML = items.length
     ? items.join('')
     : '<div class="chart-empty">Nothing needs attention. No open reports, no flagged links.</div>'

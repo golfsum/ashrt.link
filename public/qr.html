@@ -18,26 +18,77 @@
           <header class="topbar">
             <div>
               <h1>QR Codes</h1>
-              <p class="sub">Every link gets a QR code. Download as PNG or SVG, or print it.</p>
+              <p class="sub">
+                Every link has a code. It points at the short link, so you can change where it goes
+                after it is printed.
+              </p>
             </div>
           </header>
 
-          <div id="pro-banner" class="panel-card pro-banner">
+          <div id="pro-banner" class="panel-card pro-banner" hidden>
             <div>
-              <b>Branded QR codes</b>
-              <p class="panel-sub" style="margin:4px 0 0">Color your QR codes to match your brand. Logos and frames coming soon.</p>
+              <b>Design your codes</b>
+              <p class="panel-sub" style="margin:4px 0 0">
+                Colours, dot and corner styles, your logo in the middle, a frame and a caption. On Pro.
+              </p>
             </div>
-            <a class="btn btn-sm" href="/account">Upgrade to Pro</a>
+            <a class="btn btn-sm" href="/account">Upgrade</a>
           </div>
 
-          <div id="brand-bar" class="brand-bar" style="display:none">
-            <label for="brand-color">Brand color</label>
-            <input id="brand-color" type="color" value="#0A0A0A" />
-            <button id="brand-reset" class="btn btn-ghost btn-sm">Reset</button>
-          </div>
+          <section id="editor" class="panel-card qr-editor" hidden>
+            <div class="qr-editor-preview">
+              <div id="preview" class="qr-preview-lg"></div>
+              <div class="qr-editor-note" id="preview-note">Previewing your first link</div>
+            </div>
+
+            <div class="qr-editor-controls">
+              <div class="qr-ctrl-row">
+                <label class="field-label" for="fg">Code</label>
+                <input id="fg" type="color" value="#0A0A0A" />
+                <label class="field-label" for="bg">Background</label>
+                <input id="bg" type="color" value="#FFFFFF" />
+                <label class="qr-check"><input id="transparent" type="checkbox" /> Transparent</label>
+              </div>
+
+              <div class="qr-ctrl-row">
+                <label class="field-label" for="style">Dots</label>
+                <select id="style" class="toolbar-select">
+                  <option value="square">Square</option>
+                  <option value="rounded">Rounded</option>
+                  <option value="dots">Dots</option>
+                </select>
+                <label class="field-label" for="eyeStyle">Corners</label>
+                <select id="eyeStyle" class="toolbar-select">
+                  <option value="square">Square</option>
+                  <option value="rounded">Rounded</option>
+                  <option value="circle">Circle</option>
+                </select>
+              </div>
+
+              <div class="qr-ctrl-row">
+                <label class="field-label" for="caption">Caption</label>
+                <input id="caption" type="text" maxlength="40" placeholder="Scan me (optional)" />
+                <label class="qr-check"><input id="frame" type="checkbox" /> Frame</label>
+              </div>
+
+              <div class="qr-ctrl-row">
+                <label class="field-label">Logo</label>
+                <input id="logo-file" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+                <button id="logo-pick" class="btn btn-ghost btn-sm">Upload</button>
+                <button id="logo-clear" class="btn btn-ghost btn-sm" hidden>Remove</button>
+                <span class="qr-editor-note">PNG, JPEG or WebP, under 48KB</span>
+              </div>
+
+              <div id="qr-err" class="auth-err"></div>
+              <div class="qr-ctrl-row qr-ctrl-actions">
+                <button id="save" class="btn btn-sm">Save style</button>
+                <span class="qr-editor-note">Applies to every code on this account</span>
+              </div>
+            </div>
+          </section>
 
           <div id="grid" class="qr-grid"></div>
-          <div id="empty" class="chart-empty" style="display:none">No links yet. Create one to get its QR code.</div>
+          <div id="empty" class="chart-empty" hidden>No links yet. Create one to get its QR code.</div>
         </div>
       </main>
     </div>

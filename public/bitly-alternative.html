@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>A simpler Bitly alternative - ashrt.link</title>
+    <meta name="description" content="Short links, branded domains, QR codes, campaigns and full analytics without the enterprise pricing ladder. A factual, dated comparison with Bitly's published plans." />
+    <link rel="canonical" href="https://www.ashrt.link/bitly-alternative" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="ashrt.link" />
+    <meta property="og:url" content="https://www.ashrt.link/bitly-alternative" />
+    <meta property="og:title" content="A simpler Bitly alternative - ashrt.link" />
+    <meta property="og:description" content="Short links, branded domains, QR codes and full analytics without the enterprise pricing ladder. A factual, dated comparison." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="A simpler Bitly alternative - ashrt.link" />
+    <meta name="twitter:description" content="Short links, branded domains, QR codes and full analytics without the enterprise pricing ladder." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <a class="logo" href="/">
+          <svg viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="8" fill="#14141b" stroke="#2a2a38" />
+            <path d="M13 19l6-6M12.5 14.5l-2 2a3.5 3.5 0 0 0 5 5l2-2M19.5 17.5l2-2a3.5 3.5 0 0 0-5-5l-2 2"
+              fill="none" stroke="#818cf8" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          ashrt<span class="dot">.link</span>
+        </a>
+        <nav id="nav" class="nav"></nav>
+      </header>
+
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <a href="/">Free link tracker</a> <span>/</span> <span>Bitly alternative</span>
+      </nav>
+
+      <section class="hero hero-tool">
+        <h1>Looking for a simpler Bitly alternative?</h1>
+        <p class="hero-sub">
+          Short links, a branded domain, QR codes, campaigns and real analytics, without the jump
+          from a small-business plan to an enterprise one. Try it below without an account.
+        </p>
+      </section>
+
+      <section class="create" id="tool">
+        <form class="create-row" id="create-form">
+          <input id="url" type="text" inputmode="url" autocomplete="off"
+            placeholder="Paste a URL to see how it works" aria-label="URL to track" />
+          <button id="go" class="btn" type="submit">Create a tracking link</button>
+        </form>
+        <div class="create-meta">
+          <span class="hint-inline">No account needed. Your link works immediately, and you can claim it later.</span>
+        </div>
+        <div id="result" class="tool-result" hidden>
+          <div class="tool-result-head">
+            <div>
+              <div class="tool-result-label">Your trackable link</div>
+              <a id="result-link" class="mono tool-result-url" href="#" target="_blank" rel="noreferrer"></a>
+            </div>
+            <div class="tool-result-actions">
+              <button type="button" class="btn" id="result-copy">Copy</button>
+              <a class="btn btn-ghost" id="result-stats" href="#">View analytics</a>
+              <button type="button" class="btn btn-ghost" id="result-qr">QR code</button>
+            </div>
+          </div>
+          <div class="tool-result-foot">
+            <span id="result-clicks">0 clicks so far</span>
+            <span id="result-expiry"></span>
+            <a class="tool-result-cta" href="/signup" id="result-save">Save this link to a free account</a>
+          </div>
+        </div>
+        <div id="err" class="err" hidden></div>
+      </section>
+
+      <section class="article">
+        <h2>The honest comparison</h2>
+        <p class="table-note">
+          Bitly figures below are from Bitly's published pricing page, checked on
+          <b>13 September 2026</b>. Plans change; check theirs before deciding. ashrt.link figures
+          are the limits our own API enforces, listed on our <a href="/pricing">pricing page</a>.
+        </p>
+
+        <div class="cmp-scroll">
+          <table class="cmp">
+            <thead>
+              <tr><th>Free plan</th><th>Bitly Free</th><th>ashrt.link Free</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>New links</td><td>5 per month</td><td>50 per 30 days</td></tr>
+              <tr><td>QR codes</td><td>2 per month</td><td>One for every link</td></tr>
+              <tr><td>Click history</td><td>Not included</td><td>400 days</td></tr>
+              <tr><td>Referrers, countries, devices</td><td>Not on free</td><td>Included</td></tr>
+              <tr><td>Create without an account</td><td>No</td><td>Yes, and claim it later</td></tr>
+              <tr><td>API</td><td>Not on free</td><td>100 calls a day</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="cmp-scroll">
+          <table class="cmp">
+            <thead>
+              <tr><th>Paid</th><th>Bitly</th><th>ashrt.link</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>First paid tier</td><td>Core, $10/mo billed annually, 100 links a month</td><td>Pro, $9/mo, 5,000 links per 30 days</td></tr>
+              <tr><td>A branded domain arrives at</td><td>Growth, $29/mo annually</td><td>Pro, $9/mo</td></tr>
+              <tr><td>Link expiry arrives at</td><td>Growth, $29/mo annually</td><td>Pro, $9/mo</td></tr>
+              <tr><td>Campaign-level reporting arrives at</td><td>Premium, $199/mo annually</td><td>Free</td></tr>
+              <tr><td>Click history on the first paid tier</td><td>30 days</td><td>400 days</td></tr>
+              <tr><td>Top tier before enterprise</td><td>Premium, $199/mo annually, 3,000 links a month</td><td>Business, $29/mo, 25,000 links per 30 days</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2>Where we are genuinely different</h2>
+
+        <h3>The allowance is on creating links, not on keeping them</h3>
+        <p>
+          A monthly link cap that also counts everything you made last year eventually forces you to
+          delete old links to publish new ones, and a deleted short link is a dead link on whatever
+          it was printed on. Here the count is of links created in the last 30 days. Everything you
+          have already published keeps working and stops counting once its window passes.
+        </p>
+
+        <h3>Analytics are not the upsell</h3>
+        <p>
+          Referrers, countries, devices, browsers, operating systems, time of day, day of week,
+          campaign totals and CSV export are on the free plan. The paid plans sell a domain, QR
+          design, link expiry and volume. We would rather charge for capacity than for the numbers
+          that tell you whether any of it worked.
+        </p>
+
+        <h3>Bot traffic is named, not counted</h3>
+        <p>
+          Slack, X, Facebook, Discord and iMessage all fetch a link the moment you post it, to build
+          the preview. Counting those as clicks makes every link look like it did better than it
+          did. They are classified by service, kept in their own panel, and excluded from your click
+          total, so the number you report to somebody else is defensible.
+        </p>
+
+        <h3>Nothing sits between the click and the destination</h3>
+        <p>
+          No interstitial page, no advert, no "you are being redirected". One 302 to where the link
+          says it goes. The only exception is a link we have flagged for review, which shows a
+          warning instead of forwarding, and that is a safety measure rather than a monetisation.
+        </p>
+
+        <h3>You can change where a link points, and undo it</h3>
+        <p>
+          Destinations stay editable, the last ten are kept with the date and who changed them, and
+          any of them can be restored. Before you change a link, the editor tells you how many
+          clicks it has had in the last 30 days, because that is the number that makes it a
+          decision rather than a form field.
+        </p>
+
+        <h2>Where Bitly is the better choice</h2>
+        <p>
+          Being straight about this is more useful than pretending otherwise. Bitly has been around
+          far longer, and their scale shows in places we do not compete: SSO and group permissions,
+          a dedicated success manager, mobile deep linking, city-level geography, a much larger
+          integration catalogue, and the simple fact that <span class="mono">bit.ly</span> is a link
+          people recognise. If you need enterprise access control or deep linking into native apps,
+          buy the thing that has them.
+        </p>
+        <p>
+          We are built for the person or small team who wants branded, trackable links and honest
+          numbers without a four-figure annual commitment.
+        </p>
+
+        <h2>Moving over</h2>
+        <p>
+          Existing Bitly links keep working; nothing here breaks them, and there is no need to
+          migrate history. The usual approach is to point a new subdomain, something like
+          <span class="mono">go.yourbrand.com</span>, at ashrt.link, start making new links here,
+          and leave the old ones alone. Setup is a TXT record and a CNAME, and the
+          <a href="/settings">domain screen</a> tells you which of the checks is still outstanding
+          rather than saying "pending".
+        </p>
+      </section>
+
+      <section class="related">
+        <h2>Related</h2>
+        <div class="related-links">
+          <a href="/">Free link tracker</a>
+          <a href="/pricing">Pricing</a>
+          <a href="/qr-code-generator">QR code generator</a>
+          <a href="/utm-link-tracker">UTM link tracker</a>
+          <a href="/qr-code-tracking">QR code tracking</a>
+        </div>
+      </section>
+
+      <div id="qr-modal" class="modal-backdrop">
+        <div class="modal">
+          <h3>QR code</h3>
+          <div id="qr-preview" class="qr-preview"></div>
+          <div id="qr-target" class="qr-target mono"></div>
+          <div class="modal-actions">
+            <a id="qr-png" class="btn btn-ghost" href="#" download>PNG</a>
+            <a id="qr-svg" class="btn btn-ghost" href="#" download>SVG</a>
+            <button id="qr-close" class="btn">Close</button>
+          </div>
+        </div>
+      </div>
+
+      <footer>
+        <span>© 2026 ashrt.link</span>
+        <span class="foot-links">
+          <a href="/privacy">Privacy</a> &middot;
+          <a href="/terms">Terms</a> &middot;
+          <a href="/report">Report a link</a>
+        </span>
+      </footer>
+    </div>
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "Free link tracker", "item": "https://www.ashrt.link/" },
+        { "@type": "ListItem", "position": 2, "name": "Bitly alternative", "item": "https://www.ashrt.link/bitly-alternative" }
+      ]
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Do my existing Bitly links stop working if I switch?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. Links on another service are unaffected by creating an account here. The usual approach is to point a new subdomain at ashrt.link, create new links here, and leave existing links alone." }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I use my own domain for short links?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes, from the Pro plan at $9 a month. Setup is a TXT record to prove ownership and a CNAME, or an A record for an apex domain, and the setup screen reports which check is still outstanding." }
+        },
+        {
+          "@type": "Question",
+          "name": "Are analytics limited on the free plan?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. Clicks, unique visitors, referrers, countries, devices, browsers, operating systems, time of day, day of week, campaign totals and CSV export are all included on the free plan, with 400 days of click history." }
+        },
+        {
+          "@type": "Question",
+          "name": "Is there an advert or interstitial before the redirect?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. A click is a single redirect to the destination. The only exception is a link flagged for review, which shows a warning page instead of forwarding." }
+        }
+      ]
+    }
+    </script>
+    <script src="/guest-store.js"></script>
+    <script src="/landing.js"></script>
+    <script src="/events.js"></script>
+  </body>
+</html>

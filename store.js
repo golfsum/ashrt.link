@@ -27,6 +27,7 @@
  */
 
 import crypto from 'node:crypto'
+import { hashApiKey, keysOf } from './lib/apikeys.js'
 import {
   useKV,
   driver,
@@ -96,13 +97,103 @@ export async function setMetaFlag(key, value) {
 
 /* -------------------------------- helpers --------------------------------- */
 
-/** API keys are stored hashed, so a database dump does not hand over accounts. */
-export function hashApiKey(key) {
-  return crypto.createHash('sha256').update(String(key || '')).digest('hex')
-}
+/**
+ * API keys are stored hashed, so a database dump does not hand over accounts.
+ * Re-exported from lib/apikeys.js rather than reimplemented: two hash functions
+ * that drift apart would lock everybody out of the API at once.
+ */
+export { hashApiKey }
 
 export function hashGuestToken(token) {
   return crypto.createHash('sha256').update(String(token || '')).digest('hex')
+}
+
+/**
+ * Apply index writes, and do not let them fail quietly.
+ *
+ * The record itself is written before these run, so a swallowed failure here
+ * produces a link that exists and redirects but that its owner cannot see and
+ * cannot manage. That is a worse outcome than a slow request, so a failed
+ * pipeline is retried command by command, and anything still failing after that
+ * is logged loudly rather than discarded.
+ */
+async function writeIndexes(cmds, context = '') {
+  if (!cmds.length) return true
+
+  // A pipeline fails two ways. The whole call can throw, which is obvious, or
+  // it can come back with per-command errors that lib/kv.js reports as null
+  // results while the HTTP request itself "succeeded". The second kind is the
+  // dangerous one, and it is the kind that strands a slug in an owner set.
+  // Every command used for indexing (SADD, SREM, ZADD, ZREM, HSET, HDEL, DEL)
+  // answers with a count, so a null here is always an error, never data.
+  let retry = cmds
+  try {
+    const results = await pipeline(cmds)
+    retry = cmds.filter((_, i) => results[i] === null || results[i] === undefined)
+    if (!retry.length) return true
+    console.error(
+      `[store] ${retry.length} index command(s) rejected (${context}); retrying individually`,
+    )
+  } catch (err) {
+    console.error(`[store] index pipeline failed (${context}): ${err.message}; retrying individually`)
+  }
+
+  let failed = 0
+  for (const cmd of retry) {
+    try {
+      await redis(cmd)
+    } catch (err) {
+      failed++
+      console.error(`[store] index write failed (${context}): ${cmd[0]} ${cmd[1]} - ${err.message}`)
+    }
+  }
+  if (failed) {
+    console.error(
+      `[store] ${failed} index write(s) lost for ${context}. ` +
+        'Links may be missing from dashboards until `npm run doctor -- --repair` is run.',
+    )
+  }
+  return failed === 0
+}
+
+/**
+ * Remove owner-index entries that are provably not that owner's links.
+ *
+ * Two kinds qualify: the record is gone, or the record exists and names a
+ * different owner (a claimed guest link, a transfer). Anything else - a record
+ * that would not parse, a read that came back short - is left in place, because
+ * an index entry is cheap and an unindexed link is invisible.
+ */
+async function healOwnerIndex(owner, slugs, records, mine) {
+  const parsed = new Map(records.filter(Boolean).map((l) => [l.slug, l]))
+  const live = new Set(mine.map((l) => l.slug))
+  const unaccounted = slugs.filter((s) => !live.has(s))
+  if (!unaccounted.length) return
+
+  const drop = []
+  const unknown = []
+  for (const slug of unaccounted) {
+    const rec = parsed.get(slug)
+    if (rec) drop.push(slug) // exists, belongs to someone else
+    else unknown.push(slug) // missing, or unreadable - ask before removing
+  }
+
+  if (unknown.length) {
+    const exists = await pipeline(unknown.map((s) => ['HEXISTS', 'ashrt:links', s]))
+    unknown.forEach((slug, i) => {
+      if (exists[i] === 0 || exists[i] === '0') drop.push(slug)
+      else if (exists[i] === null || exists[i] === undefined) {
+        // The check itself failed. Keep the entry.
+      } else {
+        console.error(
+          `[store] ${slug} is indexed to ${owner} and still stored, but could not be read. ` +
+            'Leaving the index entry in place; run `npm run doctor` to inspect it.',
+        )
+      }
+    })
+  }
+
+  if (drop.length) await pipeline(drop.map((s) => ['SREM', `ashrt:byowner:${owner}`, s]))
 }
 
 /** Trim a per-day map so a long-lived link's record cannot grow without bound. */
@@ -129,6 +220,11 @@ function hydrate(link) {
     browsers: {},
     os: {},
     tags: [],
+    rules: [],
+    history: [],
+    hours: {},
+    weekdays: {},
+    channels: {},
     title: null,
     campaign: null,
     expiresAt: null,
@@ -172,10 +268,25 @@ export const store = {
       const slugs = (await redis(['SMEMBERS', `ashrt:byowner:${owner}`])) || []
       if (!slugs.length) return []
       const links = await linkBackend.many(slugs)
-      return links
+      const mine = links
         .map(hydrate)
         .filter((l) => l.owner === owner)
         .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+
+      // Self-heal, but only what can be proven dead.
+      //
+      // A slug in this set that no longer has a record, or whose record now
+      // belongs to somebody else, is dead weight: it can never be shown, and it
+      // used to count against the account's quota. Those get dropped here.
+      //
+      // A slug that is missing from the read for any other reason - a record
+      // that failed to parse, a partial response - is left alone. Removing it
+      // would quietly unindex a link that still exists and still redirects,
+      // which is the exact failure this code is here to prevent.
+      if (mine.length !== slugs.length) {
+        healOwnerIndex(owner, slugs, links, mine).catch(() => {})
+      }
+      return mine
     }
     const links = await linkBackend.all()
     return links
@@ -184,12 +295,18 @@ export const store = {
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
   },
 
-  /** Just the count, without materializing the links. */
+  /**
+   * How many links this account actually has.
+   *
+   * Deliberately counts the same thing byOwner() returns, rather than SCARD on
+   * the index. Those are different numbers the moment the index drifts: a stale
+   * slug left in the set counts toward the quota while showing up nowhere, so
+   * someone is told they have used 19 of 25 links and cannot find any of them.
+   *
+   * The quota must count what you can see.
+   */
   async countByOwner(owner) {
     if (!owner) return 0
-    if (useKV && (await ownerIndexReady())) {
-      return Number(await redis(['SCARD', `ashrt:byowner:${owner}`])) || 0
-    }
     return (await this.byOwner(owner)).length
   },
 
@@ -210,7 +327,7 @@ export const store = {
       const cmds = [['ZADD', 'ashrt:linkidx', String(full.createdAt || Date.now()), full.slug]]
       if (full.owner) cmds.push(['SADD', `ashrt:byowner:${full.owner}`, full.slug])
       if (full.guestTokenHash) cmds.push(['HSET', 'ashrt:gtok', full.guestTokenHash, full.slug])
-      await pipeline(cmds).catch(() => {})
+      await writeIndexes(cmds, `add ${full.slug}`)
     } else if (full.guestTokenHash) {
       const all = guestFile.read()
       all[full.guestTokenHash] = full.slug
@@ -226,7 +343,10 @@ export const store = {
       const cmds = [['ZREM', 'ashrt:linkidx', slug], ['DEL', `ashrt:uv:${slug}`]]
       if (link?.owner) cmds.push(['SREM', `ashrt:byowner:${link.owner}`, slug])
       if (link?.guestTokenHash) cmds.push(['HDEL', 'ashrt:gtok', link.guestTokenHash])
-      await pipeline(cmds).catch(() => {})
+      // A lost SREM here is what strands a slug in the owner set: the record is
+      // gone, so it can never be displayed, but it used to keep counting
+      // against the quota.
+      await writeIndexes(cmds, `remove ${slug}`)
     }
   },
 
@@ -315,6 +435,21 @@ export const store = {
     bump('referrers', ctx.refHost)
     bump('browsers', ctx.browser)
     bump('os', ctx.os)
+
+    // When people click, in UTC. Two small fixed-size maps (24 and 7 keys), so
+    // they cost nothing to keep and answer "when should I post" without
+    // storing a row per click.
+    const at = new Date()
+    bump('hours', String(ctx.hour ?? at.getUTCHours()))
+    bump('weekdays', String(ctx.weekday ?? at.getUTCDay()))
+
+    // How the person arrived: a scanned QR code, or the link itself. Our own
+    // codes carry a marker, so this is measured rather than guessed.
+    bump('channels', ctx.channel === 'qr' ? 'qr' : 'link')
+
+    // Which routing rule served this click, so a rule can be judged on its own
+    // traffic rather than on a guess. "default" is the link's own destination.
+    if (link.rules?.length) bump('routed', ctx.ruleId || 'default')
 
     if (useKV) {
       const cmds = [['HSET', 'ashrt:links', slug, JSON.stringify(link)]]
@@ -407,6 +542,11 @@ export const store = {
       referrers: l.referrers || {},
       browsers: l.browsers || {},
       os: l.os || {},
+      hours: l.hours || {},
+      weekdays: l.weekdays || {},
+      channels: l.channels || {},
+      routed: l.routed || {},
+      rules: l.rules || [],
       bots: l.bots || {},
     }
   },
@@ -425,6 +565,9 @@ export const store = {
     const referrers = {}
     const browsers = {}
     const os = {}
+    const hours = {}
+    const weekdays = {}
+    const channels = {}
     let totalClicks = 0
     let totalBotClicks = 0
 
@@ -441,6 +584,9 @@ export const store = {
       for (const [k, n] of Object.entries(l.referrers || {})) referrers[k] = (referrers[k] || 0) + n
       for (const [k, n] of Object.entries(l.browsers || {})) browsers[k] = (browsers[k] || 0) + n
       for (const [k, n] of Object.entries(l.os || {})) os[k] = (os[k] || 0) + n
+      for (const [k, n] of Object.entries(l.hours || {})) hours[k] = (hours[k] || 0) + n
+      for (const [k, n] of Object.entries(l.weekdays || {})) weekdays[k] = (weekdays[k] || 0) + n
+      for (const [k, n] of Object.entries(l.channels || {})) channels[k] = (channels[k] || 0) + n
     }
 
     let uniqueVisitors = 0
@@ -479,6 +625,9 @@ export const store = {
       referrers,
       browsers,
       os,
+      hours,
+      weekdays,
+      channels,
       topLinks,
       activity: await this.activity(owner),
     }
@@ -608,17 +757,40 @@ export const store = {
     }
   },
 
-  /** Link counts for many owners in one round-trip. */
+  /**
+   * Link counts for many owners, in two round-trips rather than two per owner.
+   *
+   * Counts records, not index membership, for the same reason countByOwner
+   * does: a stale slug in an owner set would otherwise show an admin "19 links"
+   * for an account whose detail page lists six, which is exactly the
+   * disagreement this whole area exists to stop. HKEYS returns slugs only, not
+   * the records behind them, so the cost is one list of short strings however
+   * many owners the page is showing.
+   */
   async countsByOwners(ownerIds) {
     const out = {}
     if (!ownerIds?.length) return out
     if (useKV) {
       try {
-        const results = await pipeline(ownerIds.map((id) => ['SCARD', `ashrt:byowner:${id}`]))
-        ownerIds.forEach((id, i) => (out[id] = Number(results[i]) || 0))
+        const [live, sets] = await Promise.all([
+          redis(['HKEYS', 'ashrt:links']),
+          pipeline(ownerIds.map((id) => ['SMEMBERS', `ashrt:byowner:${id}`])),
+        ])
+        const exists = new Set(live || [])
+        ownerIds.forEach((id, i) => {
+          const members = Array.isArray(sets[i]) ? sets[i] : []
+          out[id] = members.filter((slug) => exists.has(slug)).length
+        })
         return out
       } catch {
-        for (const id of ownerIds) out[id] = 0
+        // Falling back to the index is better than reporting zero for everyone:
+        // it can overcount drift, but it is the right order of magnitude.
+        try {
+          const results = await pipeline(ownerIds.map((id) => ['SCARD', `ashrt:byowner:${id}`]))
+          ownerIds.forEach((id, i) => (out[id] = Number(results[i]) || 0))
+        } catch {
+          for (const id of ownerIds) out[id] = 0
+        }
         return out
       }
     }
@@ -713,7 +885,9 @@ export const users = {
       return id ? userBackend.get(id) : null
     }
     const all = await userBackend.all()
-    return all.find((u) => u.apiKeyHash === h || u.apiKey === key) || null
+    // keysOf covers both the multi-key list and an account that still has the
+    // single key it was created with.
+    return all.find((u) => u.apiKey === key || keysOf(u).some((k) => k.hash === h)) || null
   },
 
   async getByOAuth(provider, sub) {
@@ -741,7 +915,7 @@ export const users = {
     if (useKV) {
       const cmds = [['ZADD', 'ashrt:useridx', String(user.createdAt || Date.now()), user.id]]
       if (user.email) cmds.push(['HSET', 'ashrt:email', lc(user.email), user.id])
-      if (user.apiKeyHash) cmds.push(['HSET', 'ashrt:apikey', user.apiKeyHash, user.id])
+      for (const k of keysOf(user)) cmds.push(['HSET', 'ashrt:apikey', k.hash, user.id])
       if (user.stripeCustomerId) cmds.push(['HSET', 'ashrt:stripe', user.stripeCustomerId, user.id])
       for (const o of user.oauth || []) cmds.push(['HSET', 'ashrt:oauth', o, user.id])
       await pipeline(cmds).catch(() => {})
@@ -749,15 +923,19 @@ export const users = {
     return user
   },
 
-  /** Pass the previous key hash when rotating so the stale index entry goes. */
-  async update(user, { oldApiKeyHash } = {}) {
+  /**
+   * Pass the hashes of any keys that no longer exist, so their index entries
+   * go with them. A revoked key that is still indexed still authenticates.
+   */
+  async update(user, { oldApiKeyHash, removedKeyHashes = [] } = {}) {
     await userBackend.put(user.id, user)
     if (useKV) {
       const cmds = []
-      if (oldApiKeyHash && oldApiKeyHash !== user.apiKeyHash) {
-        cmds.push(['HDEL', 'ashrt:apikey', oldApiKeyHash])
+      const live = new Set(keysOf(user).map((k) => k.hash))
+      for (const h of [oldApiKeyHash, ...removedKeyHashes]) {
+        if (h && !live.has(h)) cmds.push(['HDEL', 'ashrt:apikey', h])
       }
-      if (user.apiKeyHash) cmds.push(['HSET', 'ashrt:apikey', user.apiKeyHash, user.id])
+      for (const k of keysOf(user)) cmds.push(['HSET', 'ashrt:apikey', k.hash, user.id])
       if (user.email) cmds.push(['HSET', 'ashrt:email', lc(user.email), user.id])
       if (user.stripeCustomerId) cmds.push(['HSET', 'ashrt:stripe', user.stripeCustomerId, user.id])
       for (const o of user.oauth || []) cmds.push(['HSET', 'ashrt:oauth', o, user.id])

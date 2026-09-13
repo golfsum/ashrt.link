@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Free QR Code Generator - Editable After You Print | ashrt.link</title>
+    <meta name="description" content="Make a QR code for any link, free and without an account. It points at a short link you can re-target later, so the printed code never becomes wrong." />
+    <link rel="canonical" href="https://www.ashrt.link/qr-code-generator" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="ashrt.link" />
+    <meta property="og:url" content="https://www.ashrt.link/qr-code-generator" />
+    <meta property="og:title" content="Free QR Code Generator - Editable After You Print | ashrt.link" />
+    <meta property="og:description" content="Make a QR code for any link, free and without an account. Re-target it later without reprinting." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Free QR Code Generator - Editable After You Print | ashrt.link" />
+    <meta name="twitter:description" content="Make a QR code for any link, free and without an account. Re-target it later without reprinting." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body data-auto-qr="1">
+    <div class="wrap">
+      <header>
+        <a class="logo" href="/">
+          <svg viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="8" fill="#14141b" stroke="#2a2a38" />
+            <path d="M13 19l6-6M12.5 14.5l-2 2a3.5 3.5 0 0 0 5 5l2-2M19.5 17.5l2-2a3.5 3.5 0 0 0-5-5l-2 2"
+              fill="none" stroke="#818cf8" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          ashrt<span class="dot">.link</span>
+        </a>
+        <nav id="nav" class="nav"></nav>
+      </header>
+
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <a href="/">Free link tracker</a> <span>/</span> <span>QR code generator</span>
+      </nav>
+
+      <section class="hero hero-tool">
+        <h1>Free QR code generator</h1>
+        <p class="hero-sub">
+          Paste a link, get a QR code. It encodes a short link rather than your URL, so you can
+          change where it goes after the poster is printed, and you can see how many people scanned
+          it.
+        </p>
+      </section>
+
+      <section class="create" id="tool">
+        <form class="create-row" id="create-form">
+          <input id="url" type="text" inputmode="url" autocomplete="off"
+            placeholder="Paste the URL the code should open" aria-label="URL for the QR code" />
+          <button id="go" class="btn" type="submit">Make the QR code</button>
+        </form>
+        <div class="create-meta">
+          <span class="hint-inline">Free, no account. The code and its scan count are yours to keep.</span>
+        </div>
+        <div id="result" class="tool-result" hidden>
+          <div class="tool-result-head">
+            <div>
+              <div class="tool-result-label">Your QR code link</div>
+              <a id="result-link" class="mono tool-result-url" href="#" target="_blank" rel="noreferrer"></a>
+            </div>
+            <div class="tool-result-actions">
+              <button type="button" class="btn" id="result-copy">Copy</button>
+              <a class="btn btn-ghost" id="result-stats" href="#">See scans and clicks</a>
+              <button type="button" class="btn btn-ghost" id="result-qr">QR code</button>
+            </div>
+          </div>
+          <div class="tool-result-foot">
+            <span id="result-clicks">0 clicks so far</span>
+            <span id="result-expiry"></span>
+            <a class="tool-result-cta" href="/signup" id="result-save">Save this link to a free account</a>
+          </div>
+        </div>
+        <div id="err" class="err" hidden></div>
+      </section>
+
+      <section class="article">
+        <h2>Static and dynamic codes, and why it matters</h2>
+        <p>
+          A static QR code has your destination baked into the pattern. Once it is printed, that URL
+          is the code, permanently. If the page moves, the campaign ends, or somebody mistypes the
+          link before it goes to print, the only fix is a reprint.
+        </p>
+        <p>
+          A dynamic code encodes a short link instead, and the short link points at your
+          destination. The pattern never changes; where it goes is a setting. Every code made here
+          is dynamic, on the free plan, because a code that cannot be corrected is a liability on
+          anything that costs money to print.
+        </p>
+
+        <h2>Scans are counted separately from clicks</h2>
+        <p>
+          Codes generated here carry a marker, so a scan is recorded as a scan rather than blending
+          into the clicks from the same link shared in an email. You get both numbers, and the
+          marker is never passed on to your destination.
+        </p>
+
+        <h2>Designing one that still scans</h2>
+        <p>
+          Most "designed" QR codes fail for the same three reasons, and they are all avoidable:
+        </p>
+        <ul class="tick-list">
+          <li><b>The quiet zone was removed.</b> The empty margin around the pattern is part of the code. Four modules is the specification's number, and cropping to the edge is the most common reason a code stops scanning.</li>
+          <li><b>The corner squares were restyled.</b> A scanner finds those three squares first, by their 1:1:3:1:1 ratio. Rounding their corners is fine. Changing their proportions is not.</li>
+          <li><b>Contrast was lost.</b> A light pattern on a dark background, or two colours of similar brightness, reads badly under shop lighting. Dark pattern, light background, high contrast.</li>
+        </ul>
+        <p>
+          A logo in the middle is fine if the code is generated at the highest error-correction
+          level, which can lose about 30% of the pattern and still read. Our paid plans set that
+          automatically when you add a logo, along with colours, dot and corner styles, a frame and
+          a caption. Every combination is verified by rendering it and decoding it again, not by
+          looking at it.
+        </p>
+
+        <h2>Print sizes that work</h2>
+        <p>
+          The usual rule is that a code should be about a tenth of the distance it will be scanned
+          from. Roughly: 2cm across for something held in the hand, 5cm for a table tent or a menu,
+          10cm for a poster read from a metre away, and considerably larger for a window or a
+          banner. Download the SVG for anything that goes to print, since it stays sharp at any
+          size.
+        </p>
+
+        <h2>What you can do without an account</h2>
+        <p>
+          Create the code, download it, and watch the scans arrive. Guest links last 30 days. A free
+          account keeps them permanently, adds a custom short code, campaigns and 400 days of
+          history; paid plans add your own domain and the design controls.
+        </p>
+      </section>
+
+      <section class="related">
+        <h2>Related</h2>
+        <div class="related-links">
+          <a href="/">Free link tracker</a>
+          <a href="/qr-code-tracking">QR code tracking</a>
+          <a href="/pricing">Pricing</a>
+          <a href="/utm-link-tracker">UTM link tracker</a>
+        </div>
+      </section>
+
+      <div id="qr-modal" class="modal-backdrop">
+        <div class="modal">
+          <h3>QR code</h3>
+          <div id="qr-preview" class="qr-preview"></div>
+          <div id="qr-target" class="qr-target mono"></div>
+          <div class="modal-actions">
+            <a id="qr-png" class="btn btn-ghost" href="#" download>PNG</a>
+            <a id="qr-svg" class="btn btn-ghost" href="#" download>SVG</a>
+            <button id="qr-close" class="btn">Close</button>
+          </div>
+        </div>
+      </div>
+
+      <footer>
+        <span>© 2026 ashrt.link</span>
+        <span class="foot-links">
+          <a href="/privacy">Privacy</a> &middot;
+          <a href="/terms">Terms</a> &middot;
+          <a href="/report">Report a link</a>
+        </span>
+      </footer>
+    </div>
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "Free link tracker", "item": "https://www.ashrt.link/" },
+        { "@type": "ListItem", "position": 2, "name": "QR code generator", "item": "https://www.ashrt.link/qr-code-generator" }
+      ]
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Can I change where a QR code goes after printing it?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. The code encodes a short link rather than the destination, so changing the destination takes effect immediately and the printed pattern stays valid." }
+        },
+        {
+          "@type": "Question",
+          "name": "Do the QR codes expire?",
+          "acceptedAnswer": { "@type": "Answer", "text": "A code made without an account lasts 30 days and can be claimed into a free account at any point before that, which keeps it permanently along with its scan history." }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I see how many people scanned the code?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Scans are recorded separately from ordinary clicks, so a code shared in print can be compared with the same link sent by email." }
+        },
+        {
+          "@type": "Question",
+          "name": "Why did my QR code stop scanning after it was designed?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Usually one of three things: the quiet zone margin was cropped, the three corner squares were restyled so their 1:1:3:1:1 ratio changed, or the pattern and background ended up with too little contrast." }
+        },
+        {
+          "@type": "Question",
+          "name": "What size should a printed QR code be?",
+          "acceptedAnswer": { "@type": "Answer", "text": "About a tenth of the distance it will be scanned from. Roughly 2cm for something held in the hand, 5cm for a menu or table tent, and 10cm for a poster read from a metre away." }
+        }
+      ]
+    }
+    </script>
+    <script src="/guest-store.js"></script>
+    <script src="/landing.js"></script>
+    <script src="/events.js"></script>
+  </body>
+</html>

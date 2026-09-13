@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+    <title>Storage health · ashrt.link admin</title>
+  </head>
+  <body data-page="health" class="admin-body">
+    <header class="admin-bar" id="adminbar"></header>
+    <main class="admin-main">
+      <div class="admin-head">
+        <div>
+          <h1>Storage health</h1>
+          <p class="admin-sub">Do the indexes still agree with the links themselves?</p>
+        </div>
+        <div class="admin-tools">
+          <input id="who" class="toolbar-select" placeholder="One account (email)" autocomplete="off" />
+          <button id="check" class="btn btn-ghost">Check</button>
+          <button id="repair" class="btn" style="display:none">Rebuild indexes</button>
+        </div>
+      </div>
+
+      <div id="verdict"></div>
+      <div id="kpis" class="admin-kpis"></div>
+      <div id="body"></div>
+
+      <p class="admin-hint">
+        A link exists because its record exists; the indexes are only how dashboards find it. When
+        the two disagree, an account is told it has used links it cannot see. Rebuilding writes index
+        entries only — no link, destination, click count or account is modified, and nothing is
+        deleted. The same check runs from the command line as <span class="mono">npm run doctor</span>.
+      </p>
+    </main>
+    <script src="/admin/shell.js"></script>
+    <script src="/admin/health.js"></script>
+  </body>
+</html>

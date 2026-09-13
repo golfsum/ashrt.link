@@ -23,6 +23,7 @@
               <p class="sub" id="summary">Every link you are tracking.</p>
             </div>
             <div class="actions">
+              <button id="import-link" class="btn btn-ghost" hidden>Import</button>
               <button id="create-link" class="btn">New link</button>
             </div>
           </header>
@@ -85,10 +86,53 @@
             <label><span>utm_campaign</span><input id="utm_campaign" type="text" placeholder="spring_sale" /></label>
           </div>
         </details>
+        <div class="quick-fields" id="expiry-field" hidden>
+          <label class="field-wide">
+            <span>Stop working after <em id="expiry-lock"></em></span>
+            <input id="m-expires" type="datetime-local" />
+          </label>
+        </div>
+        <details id="rules-wrap" class="rules" hidden>
+          <summary>Send different visitors to different places</summary>
+          <p class="rules-note" id="rules-note"></p>
+          <div id="rules-list"></div>
+          <button type="button" id="rule-add" class="btn btn-ghost btn-sm">Add a rule</button>
+        </details>
+        <div id="m-traffic" class="edit-warn" hidden></div>
+        <div id="m-history" hidden></div>
         <div id="m-err" class="auth-err"></div>
         <div class="modal-actions">
           <button id="m-cancel" class="btn btn-ghost">Cancel</button>
           <button id="m-save" class="btn">Create</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="import-modal" class="modal-backdrop">
+      <div class="modal modal-wide">
+        <h3>Import links</h3>
+        <p class="rules-note">
+          One URL per line, or a CSV with a <span class="mono">url</span> column. Optional columns:
+          <span class="mono">alias</span>, <span class="mono">title</span>, <span class="mono">tags</span>,
+          <span class="mono">campaign</span>. <a href="#" id="csv-template">Download a template</a>
+        </p>
+
+        <div class="import-input">
+          <textarea id="import-text" rows="7" placeholder="https://example.com/one&#10;https://example.com/two, spring-sale, Spring landing page"></textarea>
+          <div class="import-actions-row">
+            <input id="import-file" type="file" accept=".csv,.txt,text/csv,text/plain" hidden />
+            <button type="button" id="import-pick" class="btn btn-ghost btn-sm">Choose a file</button>
+            <span class="qr-editor-note" id="import-count"></span>
+          </div>
+        </div>
+
+        <div id="import-preview" hidden></div>
+        <div id="import-err" class="auth-err"></div>
+
+        <div class="modal-actions">
+          <button id="import-cancel" class="btn btn-ghost">Cancel</button>
+          <button id="import-check" class="btn btn-ghost">Check the file</button>
+          <button id="import-go" class="btn" disabled>Create links</button>
         </div>
       </div>
     </div>

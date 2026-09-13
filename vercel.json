@@ -8,5 +8,16 @@
       "includeFiles": "public/**"
     }
   },
-  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/health-check",
+      "schedule": "0 */6 * * *"
+    }
+  ]
 }

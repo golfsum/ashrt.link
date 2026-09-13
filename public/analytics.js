@@ -80,6 +80,9 @@ function aggregate(perLink) {
     referrers: {},
     browsers: {},
     os: {},
+    hours: {},
+    weekdays: {},
+    channels: {},
     bots: {},
     destinations: {},
     topLinks: [],
@@ -90,7 +93,7 @@ function aggregate(perLink) {
     out.botClicks += l.botClicks || 0
     out.visitors += l.visitors || 0
     for (const [k, n] of Object.entries(l.series || {})) out.series[k] = (out.series[k] || 0) + n
-    for (const dim of ['devices', 'countries', 'referrers', 'browsers', 'os', 'bots']) {
+    for (const dim of ['devices', 'countries', 'referrers', 'browsers', 'os', 'hours', 'weekdays', 'channels', 'bots']) {
       for (const [k, n] of Object.entries(l[dim] || {})) out[dim][k] = (out[dim][k] || 0) + n
     }
     try {
@@ -115,6 +118,43 @@ function barList(el, entries, opts) {
   Charts.barList(el, entries, opts)
 }
 
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+/** A clock hour, written the way people say it. */
+const hourLabel = (h) => {
+  const n = Number(h)
+  if (n === 0) return '12am'
+  if (n === 12) return '12pm'
+  return n < 12 ? `${n}am` : `${n - 12}pm`
+}
+
+/**
+ * When the clicks happen.
+ *
+ * Every hour and every weekday is shown, including the empty ones: the gaps
+ * are the finding. A list of only the busy hours hides the fact that nothing
+ * happens before noon.
+ */
+function renderTiming() {
+  const hours = Array.from({ length: 24 }, (_, h) => ({
+    label: hourLabel(h),
+    value: stats.hours?.[String(h)] || 0,
+  }))
+  const days = WEEKDAYS.map((label, i) => ({ label, value: stats.weekdays?.[String(i)] || 0 }))
+
+  const anyTiming = hours.some((h) => h.value) || days.some((d) => d.value)
+  if (!anyTiming) {
+    const note =
+      '<div class="chart-empty">Recorded from now on. Clicks from before this was added are not broken down by time.</div>'
+    $('hours').innerHTML = note
+    $('weekdays').innerHTML = note
+    return
+  }
+
+  Charts.columns($('hours'), hours, { labelEvery: 3 })
+  Charts.barList($('weekdays'), days)
+}
+
 function render() {
   const points = seriesForRange(stats.series, rangeDays)
   const clicks = rangeDays ? sum(points) : stats.clicks
@@ -129,6 +169,15 @@ function render() {
   $('m-visitors').textContent = num(stats.visitors)
   $('m-avg').textContent = num(Math.round(clicks / days))
   $('m-bots').textContent = num(stats.botClicks)
+
+  // Scans are clicks that arrived from one of our QR codes, which carry a
+  // marker. Codes printed before the marker existed count as ordinary clicks,
+  // so this only ever understates, never inflates.
+  const scans = stats.channels?.qr || 0
+  $('m-scans').textContent = num(scans)
+  $('d-scans').textContent = stats.clicks
+    ? `${Math.round((scans / stats.clicks) * 100)}% of clicks`
+    : 'of total clicks'
   $('d-avg').textContent = rangeDays ? `over ${rangeDays} days` : `over ${days} days with data`
 
   // Period over period, only where the baseline supports it.
@@ -166,6 +215,7 @@ function render() {
         .join('')
     : '<div class="chart-empty">No links in this scope</div>'
 
+  renderTiming()
   barList($('destinations'), topEntries(stats.destinations, 8))
   barList($('referrers'), topEntries(stats.referrers, 8))
   barList($('countries'), topEntries(stats.countries, 8), { flag: true })
@@ -215,6 +265,9 @@ async function load() {
       referrers: s.referrers || {},
       browsers: s.browsers || {},
       os: s.os || {},
+      hours: s.hours || {},
+      weekdays: s.weekdays || {},
+      channels: s.channels || {},
       bots: {},
       destinations: {},
       topLinks: s.topLinks || [],

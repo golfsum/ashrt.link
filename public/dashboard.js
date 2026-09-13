@@ -95,6 +95,7 @@ function escapeHtml(s) {
 }
 
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
+const num = (n) => Number(n || 0).toLocaleString()
 const shortDest = (url) => String(url).replace(/^https?:\/\//, '').slice(0, 60)
 
 /* -------------------------------- rendering ------------------------------- */
@@ -175,6 +176,46 @@ async function loadStats() {
   if (res.status === 401) return (window.location.href = '/login')
   stats = await res.json()
   render()
+}
+
+/**
+ * Links whose destination stopped answering.
+ *
+ * Checked on a schedule, never on the redirect path, so this only ever reads
+ * what the last check found. Shown at the top because a broken destination is
+ * costing clicks right now, and nothing else on this page tells you.
+ */
+async function loadHealth() {
+  let data
+  try {
+    data = await (await fetch('/api/links/health')).json()
+  } catch {
+    return
+  }
+  const broken = data.broken || []
+  $('health-alert').hidden = broken.length === 0
+  if (!broken.length) return
+
+  const since = (ts) => {
+    const hours = Math.floor((Date.now() - ts) / 3600e3)
+    if (hours < 1) return 'just now'
+    if (hours < 24) return `${hours}h`
+    return `${Math.floor(hours / 24)}d`
+  }
+
+  $('health-alert').innerHTML =
+    `<div class="health-head">${broken.length === 1 ? '1 link may be broken' : `${broken.length} links may be broken`}</div>` +
+    broken
+      .slice(0, 5)
+      .map(
+        (b) => `<div class="health-row">
+          <a class="mono" href="/links?q=${encodeURIComponent(b.slug)}">/${escapeHtml(b.slug)}</a>
+          <span class="health-why">${escapeHtml(b.label)}${b.code ? ` (${b.code})` : ''}</span>
+          <span class="health-meta">failing ${since(b.failingSince)} · ${num(b.recentClicks)} clicks in 30 days</span>
+        </div>`,
+      )
+      .join('') +
+    (broken.length > 5 ? `<div class="health-meta">and ${broken.length - 5} more</div>` : '')
 }
 
 async function loadCampaigns() {
@@ -296,5 +337,5 @@ $('range').addEventListener('click', (e) => {
   const user = await window.shellReady
   if (!user) return
   $('greeting').textContent = greet((user.name || user.email || '').split('@')[0])
-  await Promise.all([loadCampaigns(), loadStats()])
+  await Promise.all([loadCampaigns(), loadStats(), loadHealth()])
 })()

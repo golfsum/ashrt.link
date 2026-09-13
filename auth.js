@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import { matchKey } from './lib/apikeys.js'
 import bcrypt from 'bcryptjs'
 
 /**
@@ -107,6 +108,15 @@ export function attachUser(users) {
         if (u && u.status !== 'suspended' && !u.apiDisabled) {
           req.user = u
           req.authMethod = 'apikey'
+          // Which of the account's keys this was, so scopes can be enforced and
+          // "last used" can be shown. A key that resolves to an account but
+          // matches none of its current keys is not a key.
+          req.apiKey = matchKey(u, key)
+          if (!req.apiKey) {
+            req.user = undefined
+            req.authMethod = undefined
+            req.badApiKey = true
+          }
         } else {
           // A key that was sent but did not resolve is an error, not an
           // anonymous request. Falling through to the guest path would hand a

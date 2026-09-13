@@ -19,14 +19,29 @@ test('paid features are off for free accounts', () => {
   assert.equal(can({ plan: 'free' }, 'brandedQr'), false)
   assert.equal(can({ plan: 'free' }, 'customDomains'), false)
   assert.equal(can({ plan: 'pro' }, 'brandedQr'), true)
-  assert.equal(can({ plan: 'pro' }, 'customDomains'), false)
+  // A branded domain is the first thing a paying customer wants, so it sits at
+  // the first paid tier rather than two tiers up.
+  assert.equal(can({ plan: 'pro' }, 'customDomains'), true)
   assert.equal(can({ plan: 'business' }, 'customDomains'), true)
 })
 
-test('link caps are finite on free and unlimited on paid', () => {
-  assert.equal(Number.isFinite(limitFor({ plan: 'free' }, 'links')), true)
-  assert.equal(limitFor({ plan: 'pro' }, 'links'), Infinity)
-  assert.equal(limitFor({ plan: 'business' }, 'links'), Infinity)
+test('every plan allows more domains as it goes up', () => {
+  assert.equal(limitFor({ plan: 'free' }, 'domains'), 0)
+  assert.ok(limitFor({ plan: 'pro' }, 'domains') >= 1)
+  assert.ok(limitFor({ plan: 'business' }, 'domains') > limitFor({ plan: 'pro' }, 'domains'))
+})
+
+test('the allowance is on creation, not on links you already published', () => {
+  // No plan caps stored links. Someone who stops paying, or who has been on
+  // free for two years, keeps every link they ever made working.
+  for (const plan of ['free', 'pro', 'business']) {
+    assert.equal(limitFor({ plan }, 'links'), Infinity, `${plan} must not cap stored links`)
+  }
+
+  const free = limitFor({ plan: 'free' }, 'linksPerMonth')
+  assert.ok(Number.isFinite(free) && free >= 50, 'free is generous enough to actually use')
+  assert.ok(limitFor({ plan: 'pro' }, 'linksPerMonth') > free)
+  assert.ok(limitFor({ plan: 'business' }, 'linksPerMonth') > limitFor({ plan: 'pro' }, 'linksPerMonth'))
 })
 
 test('isPaid does not treat free or guest as paid', () => {

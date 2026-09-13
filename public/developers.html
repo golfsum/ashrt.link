@@ -18,7 +18,7 @@
           <header class="topbar">
             <div>
               <h1>API</h1>
-              <p class="sub">Create and manage links programmatically with your personal key.</p>
+              <p class="sub">Create and manage links programmatically. Scoped keys, per-plan quotas, no separate SDK needed.</p>
             </div>
           </header>
 
@@ -35,15 +35,43 @@
           </section>
 
           <section class="panel-card" style="margin-top:16px">
-            <div class="panel-head"><h2>Your API key</h2></div>
-            <p class="panel-sub">Send it in the <span class="mono">x-api-key</span> header. Keep it private.</p>
-            <div class="key-row">
-              <input id="apikey" class="mono" type="text" readonly value="••••••••••••••••" />
-              <button id="reveal" class="copy">Show</button>
-              <button id="copykey" class="copy">Copy</button>
-              <button id="rotate" class="copy danger-btn">Rotate</button>
+            <div class="panel-head">
+              <h2>Your API keys</h2>
+              <button id="new-key" class="btn btn-sm">New key</button>
             </div>
+            <p class="panel-sub">
+              Send a key in the <span class="mono">x-api-key</span> header. Keys are stored hashed:
+              a new one is shown once, here, and cannot be recovered afterwards by anyone, us included.
+            </p>
+            <div id="legacy-note" class="notice" hidden></div>
+            <div id="keys"></div>
           </section>
+
+          <div id="key-modal" class="modal-backdrop">
+            <div class="modal">
+              <h3 id="key-modal-title">New API key</h3>
+              <div id="key-form">
+                <label class="field-label" for="key-name">What is it for?</label>
+                <input id="key-name" type="text" maxlength="60" placeholder="CI pipeline, Zapier, my script" />
+                <label class="field-label">What may it do?</label>
+                <div id="key-scopes" class="scope-list"></div>
+              </div>
+              <div id="key-shown" hidden>
+                <p class="rules-note">
+                  Copy it now. This is the only time it will be shown.
+                </p>
+                <div class="key-row">
+                  <input id="key-value" class="mono" type="text" readonly />
+                  <button id="key-copy" class="copy">Copy</button>
+                </div>
+              </div>
+              <div id="key-err" class="auth-err"></div>
+              <div class="modal-actions">
+                <button id="key-cancel" class="btn btn-ghost">Cancel</button>
+                <button id="key-create" class="btn">Create key</button>
+              </div>
+            </div>
+          </div>
 
           <section class="panel-card" style="margin-top:16px">
             <div class="panel-head">
@@ -56,6 +84,59 @@
               </div>
             </div>
             <pre id="code" class="snippet mono"></pre>
+          </section>
+
+          <section class="panel-card" style="margin-top:16px">
+            <div class="panel-head"><h2>Reference</h2></div>
+
+            <h3 class="doc-h">Authentication</h3>
+            <p class="panel-sub">
+              Send your key as <span class="mono">x-api-key</span>. A missing key is treated as an
+              anonymous request where that is allowed; a key that is wrong or revoked is a
+              <span class="mono">401</span>, never a quiet fallback to anonymous.
+            </p>
+
+            <h3 class="doc-h">Scopes</h3>
+            <p class="panel-sub">
+              A key may only do what it was given. A call outside its scopes answers
+              <span class="mono">403</span> with the scope it needed in the body.
+            </p>
+            <div class="doc-table">
+              <div><span class="mono">links:read</span><span>List links and read their settings</span></div>
+              <div><span class="mono">links:write</span><span>Create, update, revert and delete links</span></div>
+              <div><span class="mono">analytics:read</span><span>Statistics, health and CSV export</span></div>
+              <div><span class="mono">qr:read</span><span>Generate QR codes</span></div>
+            </div>
+
+            <h3 class="doc-h">Endpoints</h3>
+            <div class="doc-table">
+              <div><span class="mono">POST /api/links</span><span>Create a link. Body: <span class="mono">url</span>, optional <span class="mono">alias</span>, <span class="mono">title</span>, <span class="mono">tags</span>, <span class="mono">campaign</span>, <span class="mono">utm</span></span></div>
+              <div><span class="mono">POST /api/links/bulk</span><span>Up to 250 rows. <span class="mono">dryRun: true</span> validates and writes nothing</span></div>
+              <div><span class="mono">GET /api/links</span><span>Your links, newest first. <span class="mono">limit</span>, <span class="mono">cursor</span>, <span class="mono">q</span></span></div>
+              <div><span class="mono">PATCH /api/links/:code</span><span>Change destination, name, tags, campaign, expiry or routing rules</span></div>
+              <div><span class="mono">POST /api/links/:code/revert</span><span>Restore a previous destination by its <span class="mono">changedAt</span></span></div>
+              <div><span class="mono">DELETE /api/links/:code</span><span>Delete a link and its click history</span></div>
+              <div><span class="mono">GET /api/links/:code/stats</span><span>Full breakdown for one link</span></div>
+              <div><span class="mono">GET /api/stats</span><span>Account totals and dimensions</span></div>
+              <div><span class="mono">GET /api/links/health</span><span>Links whose destination stopped answering</span></div>
+              <div><span class="mono">GET /api/export?type=</span><span>CSV: <span class="mono">links</span>, <span class="mono">daily</span> or <span class="mono">campaigns</span></span></div>
+              <div><span class="mono">GET /api/qr?slug=</span><span>SVG by default, <span class="mono">format=png</span> for a bitmap</span></div>
+              <div><span class="mono">GET /api/plans</span><span>Plans and their limits. No key needed</span></div>
+            </div>
+
+            <h3 class="doc-h">Limits and errors</h3>
+            <p class="panel-sub">
+              Every key-authenticated response carries <span class="mono">X-RateLimit-Limit</span>,
+              <span class="mono">X-RateLimit-Remaining</span> and <span class="mono">X-RateLimit-Reset</span>,
+              so a client can slow down before it runs out rather than finding out at the 429.
+              Errors are JSON with an <span class="mono">error</span> field:
+              <span class="mono">400</span> the request is wrong,
+              <span class="mono">401</span> no or bad key,
+              <span class="mono">402</span> your plan does not include this,
+              <span class="mono">403</span> the key lacks a scope,
+              <span class="mono">409</span> that short code is taken,
+              <span class="mono">429</span> too fast, with <span class="mono">Retry-After</span>.
+            </p>
           </section>
         </div>
       </main>

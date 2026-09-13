@@ -88,7 +88,8 @@ function barList(el, data, opts = {}) {
   el.innerHTML = data
     .map((d) => {
       const pct = total ? Math.round((d.value / total) * 100) : 0
-      const w = max ? Math.max(3, Math.round((d.value / max) * 100)) : 0
+      // A zero gets no bar at all. A 3% stub for an empty row reads as "a little".
+      const w = d.value && max ? Math.max(3, Math.round((d.value / max) * 100)) : 0
       const label = opts.flag ? `${flag(d.label)} ${countryName(d.label)}` : d.label
       return `<div class="bar-row">
         <div class="bar-top"><span class="bar-label">${label}</span><span class="bar-val">${d.value.toLocaleString()} <span class="bar-pct">${pct}%</span></span></div>
@@ -102,4 +103,26 @@ function empty(el) {
   el.innerHTML = '<div class="chart-empty">No data yet</div>'
 }
 
-window.Charts = { line, donut, barList, flag, countryName }
+/**
+ * Vertical columns, for a dimension with many small buckets.
+ *
+ * Hours of the day as a 24-row bar list is a wall; as 24 columns it is a shape
+ * you read in a second. Empty buckets are drawn as empty, because a quiet
+ * morning is the finding.
+ */
+function columns(el, data, opts = {}) {
+  if (!data || !data.length) return empty(el)
+  const max = Math.max(...data.map((d) => d.value), 1)
+  const every = opts.labelEvery || 1
+  el.innerHTML = `<div class="cols">${data
+    .map((d, i) => {
+      const h = Math.round((d.value / max) * 100)
+      return `<div class="col" title="${d.label}: ${d.value.toLocaleString()}">
+        <div class="col-track"><div class="col-fill" style="height:${d.value ? Math.max(h, 2) : 0}%"></div></div>
+        <div class="col-label">${i % every === 0 ? d.label : ''}</div>
+      </div>`
+    })
+    .join('')}</div>`
+}
+
+window.Charts = { line, donut, barList, columns, flag, countryName }

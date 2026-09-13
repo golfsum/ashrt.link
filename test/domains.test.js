@@ -66,21 +66,35 @@ const BROWSER = 'Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/120 Safari/53
 
 /* ------------------------------ entitlement ------------------------------- */
 
-test('custom domains need the Business plan', async () => {
+test('custom domains need a paid plan', async () => {
   const free = await signup('free')
   const res = await request(app).post('/api/domains').set('Cookie', free.cookie).send({ domain: 'links.example.com' })
   assert.equal(res.status, 402)
   assert.equal(res.body.needsUpgrade, true)
 })
 
-test('adding a domain returns the DNS records needed to prove ownership', async () => {
+test('adding a domain returns the exact records to publish', async () => {
   const biz = await signup()
   const res = await request(app).post('/api/domains').set('Cookie', biz.cookie).send({ domain: 'links.example.com' })
   assert.equal(res.status, 200)
-  assert.equal(res.body.domains[0].status, 'pending', 'it does not serve anything until verified')
-  assert.match(res.body.token, /^ashrt-verify=/)
-  assert.equal(res.body.dns.txt.name, '_ashrt.links.example.com')
-  assert.equal(res.body.dns.txt.value, res.body.token)
+  assert.equal(res.body.domain.status, 'pending_dns', 'it serves nothing until it is checked')
+  assert.equal(res.body.domain.live, false)
+
+  const txt = res.body.domain.records.find((r) => r.type === 'TXT')
+  const route = res.body.domain.records.find((r) => r.type === 'CNAME')
+  assert.equal(txt.name, '_ashrt.links.example.com')
+  assert.match(txt.value, /^ashrt-verify=/)
+  assert.ok(route, 'a subdomain gets a CNAME')
+  assert.equal(res.body.domain.isDefault, true, 'the first domain becomes the default')
+})
+
+test('an apex domain is told to use an A record, not a CNAME', async () => {
+  const biz = await signup()
+  const res = await request(app).post('/api/domains').set('Cookie', biz.cookie).send({ domain: 'apex-example.com' })
+  assert.equal(res.status, 200)
+  const kinds = res.body.domain.records.map((r) => r.type)
+  assert.ok(kinds.includes('A'), 'an apex domain cannot be a CNAME')
+  assert.ok(!kinds.includes('CNAME'))
 })
 
 test('the verification token is specific to the account and the domain', async () => {
@@ -88,9 +102,10 @@ test('the verification token is specific to the account and the domain', async (
   const b = await signup()
   const resA = await request(app).post('/api/domains').set('Cookie', a.cookie).send({ domain: 'brand-a.example.com' })
   const resB = await request(app).post('/api/domains').set('Cookie', b.cookie).send({ domain: 'brand-a.example.com' })
+  const tokenOf = (r) => r.body.domain.records.find((x) => x.type === 'TXT').value
   // Same domain, different accounts: the token they must publish differs, so
   // one account cannot use another's published record.
-  assert.notEqual(resA.body.token, resB.body.token)
+  assert.notEqual(tokenOf(resA), tokenOf(resB))
 })
 
 test('our own domain cannot be claimed as a custom domain', async () => {
@@ -99,15 +114,21 @@ test('our own domain cannot be claimed as a custom domain', async () => {
   assert.equal(res.status, 400)
 })
 
-test('verification fails when the TXT record is not there', async () => {
+test('a check with no TXT record says so and changes nothing', async () => {
   const biz = await signup()
   await request(app).post('/api/domains').set('Cookie', biz.cookie).send({ domain: 'unverifiable.example.com' })
   const res = await request(app).post('/api/domains/unverifiable.example.com/verify').set('Cookie', biz.cookie)
-  assert.equal(res.status, 400)
-  assert.ok(res.body.dns, 'it tells you what to publish')
+
+  // Not an error: the question was answered. The answer is "not yet".
+  assert.equal(res.status, 200)
+  assert.equal(res.body.state, 'pending_dns')
+  assert.equal(res.body.domain.live, false)
+  assert.ok(res.body.records.length, 'it tells you what to publish')
+  assert.ok(res.body.checks[0].ok === false, 'and which check failed')
 
   const after = await users.getById(biz.id)
-  assert.equal(after.domains[0].status, 'pending', 'a failed check must not verify it')
+  assert.equal(after.domains[0].status, 'pending_dns', 'a failed check must not make it live')
+  assert.ok(!after.domains[0].verifiedAt)
 })
 
 /* -------------------------------- routing --------------------------------- */
@@ -237,4 +258,98 @@ test('short links are presented on a verified brand domain', async () => {
 
   const list = await request(app).get('/api/links').set('Cookie', biz.cookie)
   assert.ok(list.body.links.every((l) => l.shortUrl.startsWith('https://go.presented.example/')))
+})
+
+/* --------------------------- brand host routing --------------------------- */
+
+test('the bare branded host can be sent wherever the account chooses', async () => {
+  const biz = await signup()
+  await forceVerify(biz.id, 'go.root.example')
+
+  // Unset, it falls back to our canonical site.
+  const before = await request(app).get('/').set('Host', 'go.root.example').set('User-Agent', BROWSER)
+  assert.match(before.headers.location, /^https:\/\/www\.ashrt\.link/)
+
+  const set = await request(app)
+    .patch('/api/domains/go.root.example')
+    .set('Cookie', biz.cookie)
+    .send({ rootRedirect: 'https://brand.example/home' })
+  assert.equal(set.status, 200)
+  assert.equal(set.body.domain.rootRedirect, 'https://brand.example/home')
+  clearDomainCache()
+
+  const after = await request(app).get('/').set('Host', 'go.root.example').set('User-Agent', BROWSER)
+  assert.equal(after.status, 302)
+  assert.equal(after.headers.location, 'https://brand.example/home')
+})
+
+test('an unknown code on a branded host can fall back to the brand', async () => {
+  const biz = await signup()
+  await forceVerify(biz.id, 'go.fallback.example')
+
+  // Unset, an unknown code is a 404 like anywhere else.
+  const before = await request(app).get('/nosuchcode').set('Host', 'go.fallback.example').set('User-Agent', BROWSER)
+  assert.equal(before.status, 404)
+
+  await request(app)
+    .patch('/api/domains/go.fallback.example')
+    .set('Cookie', biz.cookie)
+    .send({ notFoundRedirect: 'https://brand.example/links' })
+  clearDomainCache()
+
+  const after = await request(app).get('/nosuchcode').set('Host', 'go.fallback.example').set('User-Agent', BROWSER)
+  assert.equal(after.status, 302)
+  assert.equal(after.headers.location, 'https://brand.example/links')
+
+  // And it must not become a way to reach another account's link.
+  const other = await signup()
+  const theirs = await request(app).post('/api/links').set('Cookie', other.cookie).send({ url: 'example.com/other' })
+  const scoped = await request(app)
+    .get(`/${theirs.body.slug}`)
+    .set('Host', 'go.fallback.example')
+    .set('User-Agent', BROWSER)
+  assert.equal(scoped.headers.location, 'https://brand.example/links', 'scoped out, then sent to the fallback')
+})
+
+test('a brand redirect cannot point somewhere a link could not', async () => {
+  const biz = await signup()
+  await forceVerify(biz.id, 'go.guard.example')
+
+  for (const bad of ['http://127.0.0.1/admin', 'javascript:alert(1)', 'http://169.254.169.254/latest/meta-data/']) {
+    const res = await request(app)
+      .patch('/api/domains/go.guard.example')
+      .set('Cookie', biz.cookie)
+      .send({ rootRedirect: bad })
+    assert.equal(res.status, 400, `${bad} must be refused`)
+  }
+
+  const after = await users.getById(biz.id)
+  assert.ok(!after.domains.find((d) => d.domain === 'go.guard.example').rootRedirect)
+})
+
+test('the default domain decides how new links are presented', async () => {
+  const biz = await signup()
+  await forceVerify(biz.id, 'first.example.com')
+  await forceVerify(biz.id, 'second.example.com')
+
+  const a = await request(app).post('/api/links').set('Cookie', biz.cookie).send({ url: 'example.com/a' })
+  assert.match(a.body.shortUrl, /^https:\/\/first\.example\.com\//)
+
+  await request(app).patch('/api/domains/second.example.com').set('Cookie', biz.cookie).send({ isDefault: true })
+
+  const b = await request(app).post('/api/links').set('Cookie', biz.cookie).send({ url: 'example.com/b' })
+  assert.match(b.body.shortUrl, /^https:\/\/second\.example\.com\//, 'the chosen default wins')
+})
+
+test('removing the default promotes another domain rather than leaving none', async () => {
+  const biz = await signup()
+  await forceVerify(biz.id, 'keep.example.com')
+  await forceVerify(biz.id, 'drop.example.com')
+  await request(app).patch('/api/domains/drop.example.com').set('Cookie', biz.cookie).send({ isDefault: true })
+
+  await request(app).delete('/api/domains/drop.example.com').set('Cookie', biz.cookie)
+
+  const after = await users.getById(biz.id)
+  assert.equal(after.domains.length, 1)
+  assert.equal(after.domains[0].isDefault, true)
 })

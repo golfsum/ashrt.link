@@ -73,6 +73,7 @@ test('every admin route is invisible without the role', async () => {
     '/api/admin/abuse',
     '/api/admin/blocked',
     '/api/admin/audit',
+    '/api/admin/health',
   ]
   for (const path of paths) {
     assert.equal((await request(app).get(path)).status, 401, `${path} anonymous`)
@@ -164,11 +165,17 @@ test('an admin cannot suspend or demote their own account', async () => {
   assert.equal((await adminGet(root.cookie, '/api/admin/overview')).status, 200, 'still an admin')
 })
 
+/** Mint a key the way the developers page does. The plaintext is shown once. */
+async function newKey(cookie, name = 'Test key') {
+  const res = await request(app).post('/api/keys').set('Cookie', cookie).send({ name })
+  assert.equal(res.status, 200, `key creation failed: ${JSON.stringify(res.body)}`)
+  return res.body.key
+}
+
 test('disabling API access blocks the key but leaves the session working', async () => {
   const root = await asRoot()
   const member = await signup()
-  const account = await request(app).get('/api/account').set('Cookie', member.cookie)
-  const key = account.body.user.apiKey
+  const key = await newKey(member.cookie)
 
   assert.equal((await request(app).get('/api/account').set('x-api-key', key)).status, 200)
 
@@ -183,13 +190,24 @@ test('disabling API access blocks the key but leaves the session working', async
 test('revoking a key invalidates the old one', async () => {
   const root = await asRoot()
   const member = await signup()
-  const before = (await request(app).get('/api/account').set('Cookie', member.cookie)).body.user.apiKey
+  const before = await newKey(member.cookie, 'To be revoked')
+  assert.equal((await request(app).get('/api/account').set('x-api-key', before)).status, 200)
 
   const res = await adminPatch(root.cookie, `/api/admin/users/${member.user.id}`, { action: 'revoke-key' })
   assert.equal(res.status, 200)
   assert.ok(!JSON.stringify(res.body).includes(before), 'the response must not echo the old key')
 
   assert.equal((await request(app).get('/api/account').set('x-api-key', before)).status, 401)
+})
+
+test('the account endpoint never hands back a key', async () => {
+  // Keys are hashed at rest and shown once, at creation. An endpoint that
+  // returns one on request makes the hashing pointless.
+  const member = await signup()
+  await newKey(member.cookie)
+  const account = await request(app).get('/api/account').set('Cookie', member.cookie)
+  assert.equal(account.status, 200)
+  assert.ok(!/ask_|"apiKey"/.test(JSON.stringify(account.body)), 'no key material in the account payload')
 })
 
 test('admin notes are stored and stripped of tag characters', async () => {
@@ -506,6 +524,52 @@ test('a normal account is never reported as an admin', async () => {
 
   const record = await users.getById(member.user.id)
   assert.notEqual(record.role, 'admin', 'and nothing promoted them on the way through')
+})
+
+/* ------------------------------ storage health ---------------------------- */
+
+test('health names the links an account owns, so a count can be checked against a list', async () => {
+  const root = await asRoot()
+  const member = await signup()
+  const made = await request(app)
+    .post('/api/links')
+    .set('Cookie', member.cookie)
+    .send({ url: 'example.com/health-check' })
+  assert.equal(made.status, 200)
+
+  const res = await adminGet(root.cookie, `/api/admin/health?user=${encodeURIComponent(member.email)}`)
+  assert.equal(res.status, 200)
+
+  const account = res.body.accounts.find((a) => a.email === member.email)
+  assert.ok(account, 'the account asked about is in the report')
+  assert.equal(account.records, account.links.length, 'the number and the list are the same thing')
+  assert.ok(
+    account.links.some((l) => l.slug === made.body.slug),
+    'and the list names the actual short code',
+  )
+})
+
+test('rebuilding indexes is refused without the confirmation', async () => {
+  const root = await asRoot()
+  const res = await request(app).post('/api/admin/health/repair').set('Cookie', root.cookie).send({})
+  assert.equal(res.status, 400)
+
+  const member = await signup()
+  const asMember = await request(app)
+    .post('/api/admin/health/repair')
+    .set('Cookie', member.cookie)
+    .send({ confirm: 'repair' })
+  assert.equal(asMember.status, 404, 'and a normal account cannot reach it at all')
+})
+
+test('the health report carries no secrets', async () => {
+  const root = await asRoot()
+  const res = await adminGet(root.cookie, '/api/admin/health')
+  assert.equal(res.status, 200)
+  const body = JSON.stringify(res.body).toLowerCase()
+  for (const secret of ['password', 'apikey', 'stripe', 'secret']) {
+    assert.ok(!body.includes(secret), `${secret} must not appear in the health report`)
+  }
 })
 
 test('a suspended allowlisted account is not an admin', async () => {

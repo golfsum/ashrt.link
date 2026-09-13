@@ -407,3 +407,423 @@ rather than whatever host happens to be serving.
 
 **Action icons are inline SVG.** They were Unicode glyphs, which fall back to
 empty boxes on any system without them.
+
+## Phase 6: a number that disagreed with a list
+
+The report was one sentence: *"19 free links used but can't see what they are or
+any info on them."* That is not a display bug. It means two parts of the system
+were counting different things and neither could show its work.
+
+### What was actually wrong
+
+Links live in one Redis hash. Several indexes point at them: an owner set per
+account, a recency sorted set for admin paging. The record is the truth — a link
+exists because its record exists — and the indexes are only how a dashboard
+finds it quickly.
+
+Three faults let those drift apart and stay that way:
+
+1. **The quota counted the index, the list read the records.** `countByOwner`
+   was `SCARD` on the owner set; `byOwner` fetched the records behind those
+   slugs and kept the ones that were really there. A slug stranded in the set
+   with no record counted against the plan limit while appearing nowhere.
+2. **Index writes were fire-and-forget.** Both `add` and `remove` ended with
+   `pipeline(cmds).catch(() => {})`. A lost `SREM` on delete strands a slug
+   forever; a lost `SADD` on create makes a live link invisible to its owner.
+   Either way, nothing was logged, so nothing could be investigated later.
+3. **A pipeline can fail without throwing.** Upstash returns per-command errors
+   inside a successful HTTP response, which the client mapped to `null`. The
+   "safe" version of the retry would still have missed exactly this case.
+
+### The fix
+
+**The quota now counts what you can see.** `countByOwner` delegates to
+`byOwner`. They cannot disagree because they are the same read.
+
+**Index writes are checked.** `writeIndexes` retries a failed pipeline command
+by command, distinguishes the two failure modes above, and if anything is still
+lost it says so loudly and names the tool that repairs it. Every index command
+used here answers with a count, so a `null` result is always an error and never
+data.
+
+**Reading a dashboard heals the index it read.** Stale entries are dropped as
+they are found. But only the provably dead ones: a slug whose record is gone, or
+whose record now belongs to someone else. A record that exists and cannot be
+parsed keeps its index entry and gets logged, because unindexing a link that
+still redirects is the failure this whole area exists to prevent.
+
+**The admin user list counts records too.** It was `SCARD` as well, which meant
+an admin could see "19 links" for an account whose own detail page listed six —
+the same disagreement, one level up. It is now two round-trips regardless of
+page size: one `HKEYS` for which links exist, one pipelined `SMEMBERS` per
+account on the page.
+
+### Being able to answer the question
+
+The user's question — *what are those links?* — needed a direct answer, so
+`lib/integrity.js` compares records against every index and both the command
+line and the browser run that same code:
+
+- `npm run doctor` prints every account's real links with short code, clicks,
+  created date and destination, flags any that are `(hidden: not indexed)`, and
+  says what it would fix. `--user you@example.com` narrows it; `--repair`
+  applies.
+- `/admin/health` does the same in the browser, so fixing production does not
+  require copying database credentials onto a laptop. The rebuild asks you to
+  type `repair`, and lands in the audit log as `system.reindex` with what it
+  changed.
+
+Repair writes index entries and nothing else. No link, destination, click count
+or account is modified, and nothing is deleted — which is what makes it safe to
+expose as a button.
+
+### Tests
+
+Nine regressions, run against the KV path rather than the file backend, because
+the file backend keeps no index and so cannot reproduce any of this:
+
+- the quota equals the visible list when the index is inflated
+- a dashboard read heals stale entries and keeps live ones
+- deletion leaves nothing behind in any index
+- an index write that fails once is retried and lands
+- an index write that keeps failing is reported, the link record survives, and
+  the quota still matches the list mid-breakage
+- an unreadable record keeps its index entry
+- a link that changed hands leaves the old owner's index
+- the admin list and the account detail page report the same number
+- `ZRANGE key 0 -1` returns everything, which is what the repair path reads
+
+The fake KV in `test/helpers/fake-kv.js` grew `ZRANGE`, `HKEYS`, `HEXISTS`, real
+Redis negative-index semantics, and failure injection, so a command that works
+in production is not silently unsupported in tests — and so a test can make a
+write fail on purpose.
+
+## Phase 7: toward a real alternative
+
+The plan this works from is in `ROADMAP.md`: what already exists, what is half
+built, what is missing, and the order.
+
+### Custom domains, switched on
+
+The routing has been real since phase 5. What was missing was everything around
+it, so the feature stayed behind a flag. Three separate questions get confused
+constantly, so `lib/domains.js` keeps them apart and answers each one:
+
+1. **Does this account control the domain?** A TXT record we ask for.
+2. **Does it point here?** A CNAME, or an A record for an apex domain, which
+   cannot be a CNAME. Getting that wrong is the most common reason a custom
+   domain never comes up, so the instructions differ by domain shape.
+3. **Will HTTPS work?** The platform issues the certificate.
+
+A check now reports which of the three is outstanding, tells the difference
+between "no record" and "points somewhere else", and says what to do next.
+"Pending" with no detail is how a five-minute DNS task becomes a support
+ticket.
+
+With `VERCEL_TOKEN` and `VERCEL_PROJECT_ID` set, a verified domain is attached
+to the project automatically and its certificate state is read back, so a
+customer's domain goes live without anyone touching a dashboard. Without them
+everything else still works and the domain waits in a state that names the
+manual step, which now also appears in the admin overview so nobody waits on us
+silently.
+
+Two things a branded host needed and did not have:
+
+- **A root redirect.** Someone typing the bare domain used to land on our
+  marketing site, on their company's domain. The account chooses where it goes.
+- **A 404 fallback.** An unknown short code showed our error page on their
+  domain. It can now go to their own site instead. Scoping still applies first:
+  another account's code is scoped out and then sent to the fallback, never
+  resolved.
+
+Both are validated exactly like a link destination, so a branded host cannot
+reach anything a short link could not.
+
+The feature ships on. `CUSTOM_DOMAINS=0` turns it off for a deployment that
+cannot serve branded hosts, and says so rather than silently accepting domains.
+
+### Pricing that answers the actual complaint
+
+Custom domains moved from Business to **Pro**. A branded domain is the first
+thing someone paying for a link tool wants, and putting it two tiers up is the
+complaint we are answering.
+
+The bigger change: **the allowance is on creation, not on links you already
+published**. No plan caps stored links any more. Free gets 50 new links every 30
+days, Pro 5,000, Business 25,000. A link already out in the world keeps working
+and stops counting once its window passes, so nobody has to delete last
+quarter's links to publish this week's, and nothing breaks on a downgrade.
+
+Running out of allowance is a 402 that says which limit was reached and when it
+resets, not a 429 telling someone to try again shortly. A rejected URL costs
+nothing, so a typo never spends allowance.
+
+### Destinations you can change with your eyes open
+
+A short link is often printed, scheduled, or handed to someone else, so changing
+where it points changes something already out in the world.
+
+- The last ten destinations are kept, with when and who.
+- The edit dialog says how many clicks the link has had in the last 30 days
+  before the change, because that is the number that makes it a decision.
+- Any previous destination can be restored, and restoring re-validates it: a
+  domain that was fine six weeks ago may be on the blocklist now, and "it was
+  allowed before" is not a reason to serve it today.
+
+### Analytics: when, and out
+
+**Time of day and day of week**, in UTC, as two small fixed-size maps on the
+record. They cost nothing to keep, need no per-click rows, and answer "when
+should I post". Every hour is drawn, including the empty ones, because a quiet
+morning is the finding. Clicks recorded before this existed have no breakdown,
+and the panel says so rather than showing a confident empty chart.
+
+**CSV export** in three shapes: links with totals, clicks per link per day, and
+campaign totals. There is no per-click export because there are no per-click
+rows, which is what keeps this cheap to run and keeps us from holding a log of
+who went where. Values that would execute as spreadsheet formulas are
+neutralised, and an export contains only the requesting account's own data.
+
+### Tests
+
+Thirty-two more, covering: apex versus subdomain instructions, a check that
+changes nothing when it fails, the root redirect and 404 fallback (including
+that the fallback cannot become a way to reach another account's link), brand
+redirect validation, default-domain selection, the kill switch, the creation
+allowance and that a bad URL does not spend it, destination history and its cap,
+restore re-validation, and CSV escaping and scoping.
+
+### QR codes that can go on a poster
+
+The old implementation could draw a square code in one colour. What shipped now:
+
+**A renderer of our own** (`lib/qr.js`). The `qrcode` package still produces the
+module matrix; everything visual is drawn here, with three rules that do not
+bend whatever the styling: the finder patterns keep their proportions (rounding
+their corners is fine, changing the 1:1:3:1:1 ratio is what makes a "designed"
+QR code fail), the four-module quiet zone stays, and a logo is only ever centred,
+capped in size, and forces error-correction level H, which can lose 30% of the
+code and still read.
+
+Module styles (square, rounded, dots), corner styles (square, rounded, circle),
+foreground and background colour, transparency, a caption, a frame, and a centre
+logo. One saved style per account rather than one per code, because people want
+their codes to look like each other, and because it keeps a base64 image out of
+every link record.
+
+**Verified by decoding, not by looking.** `scripts/qr-scan-check.mjs` renders
+every combination, rasterises it in a real browser, and decodes the pixels with
+a QR decoder. It immediately caught a real bug: dots drawn at 84% of a module
+looked correct and did not decode. No unit test would have found that — the SVG
+is perfectly valid either way. The dots are now 96%, and all twelve combinations
+decode to the right URL, logo and caption included.
+
+**PNG is rendered in the browser** from that SVG, so any resolution is available
+(the download is 1024px) without putting a rasteriser in a serverless function.
+The plain `format=png` endpoint stays for API callers.
+
+**Scans are counted as scans.** Codes we generate carry an `s=qr` marker, read
+at the redirect and never forwarded to the destination. A scan is still a click;
+it is also now its own number, on the QR page per code and in analytics as a
+share of all clicks. Codes printed before the marker existed count as ordinary
+clicks, so the figure understates rather than inflates, which is the right
+direction for it to be wrong in.
+
+The logo upload accepts PNG, JPEG and WebP under 48KB and refuses SVG outright:
+an SVG can carry script, and it would be served back inside our own SVG on our
+own origin. That one route gets its own larger body parser rather than raising
+the 64kb limit for everything.
+
+### Pages that answer one question each
+
+Four new public pages, each with a job no other page does:
+
+- **`/pricing`** renders from `/api/plans`, so every number on it is the number
+  the API enforces. A hand-written pricing table drifts from the code within a
+  month and then quietly misrepresents what somebody is buying.
+- **`/qr-code-generator`** makes a code without an account and shows it
+  immediately rather than making you press one more button on a page whose whole
+  purpose is the code. The writing is about static versus dynamic codes, the
+  three reasons designed codes stop scanning, and print sizes.
+- **`/bitly-alternative`** compares the two products with figures taken from
+  Bitly's published pricing page, dated in the page itself, and a section saying
+  plainly where Bitly is the better choice. A comparison with no date on it
+  becomes a false claim on its own without anyone editing it, so a test asserts
+  the date is there.
+- The homepage pricing block was **wrong** — still advertising "up to 25 links"
+  and "branded QR colors" — and now matches the plans.
+
+Two claims were removed rather than written around. `linkPassword` was an
+entitlement no code enforced, so the pricing page rendered a feature that did not
+exist: the flag is deleted. "Scheduling" was on the homepage and only expiry
+exists, so the word is gone. Expiry itself was API-only, which is a thin thing to
+sell, so the link editor now has the control, gated by plan on the server.
+
+New tests hold the set to its own standard: every public page needs a canonical,
+valid structured data, a title and description unique across the site (duplicate
+titles are the signature of thin keyword-swapped pages), at least two internal
+links so nothing is an orphan, and a working tool rather than a picture of one.
+
+## Phase 8: one link, several destinations
+
+Smart routing: US visitors to the US store, iPhones to the App Store, everyone
+else to the default. `lib/routing.js`.
+
+**It costs nothing at redirect time.** The rules live inside the link record the
+redirect has already fetched, so evaluating them is a loop over a short array
+rather than another database round-trip. Anything needing a second lookup on the
+redirect path would have been the wrong design.
+
+Three properties the implementation is built around:
+
+- **There is always a default.** A rule set that matches nothing still produces
+  the destination the link was created with. Configuring a link can never turn
+  it into a dead end.
+- **First match wins, in the owner's order.** No scoring, no specificity
+  ranking. If two rules could both match, the one listed first is the answer,
+  which is legible from the list itself — and the editor says so on the page.
+- **A rule destination is not a way around URL validation.** Every rule URL goes
+  through the same check as the link's own, when it is saved and again when it
+  is served. Without that, the rule editor is an open redirect with a form in
+  front of it.
+
+A rule whose destination is blocked later does not take the link down with it:
+the visitor falls through to the link's own destination, and the click is
+credited to the default rather than to the dead rule.
+
+**Each rule is credited with the clicks it served**, so a rule can be judged on
+its own traffic instead of a guess. The editor shows the count under each rule
+and an "everyone else" line for the default.
+
+A test caught a real bug in the sanitiser: country values were truncated to two
+characters, so "UNITED STATES" became "UN" — a valid-looking code that would
+have routed real traffic somewhere nobody chose. A wrong value is now rejected
+and reported rather than quietly reshaped.
+
+## Phase 9: importing links by the hundred
+
+Bulk creation, up to 250 rows at a time, from a pasted list or a CSV.
+
+The failure this is designed around is the half-done import: 200 rows in, 86
+created, one bad row, and now somebody has to work out which 86 exist before
+they dare try again. So:
+
+- **The whole batch is judged before anything is written.** "Check the file"
+  runs the same validation the real import will, writes nothing, and reports a
+  verdict per row: ready, bad URL, short code in use, short code repeated in
+  this file, empty. Each one says what is wrong with that row, not just that
+  something is.
+- **Every row keeps its verdict after the import too**, with the short code it
+  got, so the result is a list you can act on rather than a count.
+- **Running out of plan allowance stops the batch cleanly.** The allowance is
+  spent one link at a time, so the run stops exactly at the limit rather than
+  partway through a row, and everything past it comes back marked `over_quota`.
+  Re-running after an upgrade cannot double-create what already exists.
+
+A repeated destination is a warning, not a refusal: two campaigns pointing at
+one page is normal. A repeated short code is a refusal, because only one of them
+could ever work.
+
+Every row goes through exactly the same URL validation as a single link, against
+the live blocklist, and a suspicious destination is imported flagged and
+audited rather than quietly. The CSV parser handles quoted cells; a plain list
+of URLs is read positionally, and a header row containing `url` switches it to
+named columns. A template is one click away.
+
+## Phase 10: knowing when a destination breaks
+
+A short link outlives the page it points at. The destination 404s, the domain
+lapses, the certificate expires, and the link keeps sending people into the
+wall. `lib/health.js` checks destinations on a schedule and says which ones
+broke.
+
+Three constraints shaped the design, and each one is load-bearing:
+
+**Never on the redirect path.** A click must not wait for somebody else's
+server. Checks run from a scheduled invocation (`vercel.json` calls
+`/api/cron/health-check` every six hours); a click only ever reads what the last
+check recorded.
+
+**Do not hammer other people's sites.** A HEAD where possible, a six-second
+timeout, one check per link per interval, and the interval depends on traffic:
+twelve hours for a link clicked this week, a week for one nobody clicks, six
+hours for one currently failing so a recovery is noticed quickly. Each run is
+bounded and works through the most overdue first. The checker identifies itself
+in its user agent, because an automated request that does not is the kind that
+gets a whole IP range blocked.
+
+**Fetching a user-supplied URL from our own server is an SSRF primitive.** The
+destination passed validation when it was saved, but DNS can be repointed at a
+private address afterwards and a redirect can lead anywhere. So redirects are
+followed by hand rather than by the fetch client, and **every hop is validated
+before it is requested**. A test proves that a destination redirecting to
+`169.254.169.254` is refused and that the address is never contacted.
+
+The endpoint itself is not open. Without `CRON_SECRET` set it refuses everyone,
+and a wrong token gets a 404 rather than a 401, because an endpoint that makes
+outbound requests on demand is a free proxy for whoever finds it. The comparison
+is timing-safe.
+
+Judgements the checker makes deliberately:
+
+- **403 and 401 are not broken.** A members-only page refusing an automated
+  request is working exactly as intended.
+- **405 is not broken either.** Some servers refuse HEAD and serve GET perfectly
+  well, so the check is retried once as a GET.
+- **One failure is not an alarm.** Sites blip, and a checker that cries wolf
+  gets ignored, which is worse than not having one. Two consecutive failures is
+  the threshold, and the record keeps when it started failing and when it last
+  worked.
+
+The dashboard shows broken links at the top, with what went wrong and how many
+clicks that link has had in the last 30 days, because that is what decides
+whether it matters. The admin overview lists them service-wide, since an outage
+on one popular destination shows up as many links at once.
+
+There is no email alert yet, and the UI does not claim there is.
+
+## Phase 11: API keys worth giving out
+
+One key per account, rotated in place, is fine until the key is in three places
+and rotating it breaks two of them — and until a script that only reads stats is
+holding a credential that can delete every link.
+
+**Several keys, each named and scoped.** Four scopes, deliberately few, because
+a scope nobody understands gets granted "just in case" and then means nothing:
+`links:read`, `links:write`, `analytics:read`, `qr:read`. A call outside a key's
+scopes answers 403 naming the scope it needed. The check is applied **to the
+route** rather than inside handlers, so a new endpoint cannot quietly inherit
+full access by forgetting a line. Sessions are never scope-limited: someone
+signed into their own dashboard has full access to their own account by
+definition, and scoping that would be theatre.
+
+**A key is shown once.** Keys are hashed at rest; the plaintext exists exactly
+once, in the response that creates it. The account endpoint no longer returns a
+key at all — an endpoint that hands one back on request makes the hashing
+pointless. What is kept is a prefix, enough to tell two keys apart in a list and
+not enough to use one.
+
+**Accounts that predate this keep working**, and were not migrated: their single
+key is *presented* as a key named "Default" with full scopes, so reading never
+has to write and an account nobody touches again keeps authenticating forever.
+Those accounts do still hold a key in the clear, so the page offers it once more
+with the reason why, and replacing it removes it for good.
+
+**Revoking means revoked.** The index entry goes with the key, because a revoked
+key that is still indexed still authenticates — which is the entire failure the
+button exists to prevent. The admin revoke action now clears *every* key on the
+account rather than rotating one: it exists for a compromised account, and
+leaving the others working would defeat it. The owner mints a replacement
+themselves, because we cannot hand them one.
+
+Last-used is recorded at most once an hour — useful enough to answer "is this
+still in use before I revoke it", not useful enough to write the account record
+on every call.
+
+**Rate-limit headers on every key-authenticated response**
+(`X-RateLimit-Limit`, `-Remaining`, `-Reset`). The quota was already enforced;
+it was just invisible until you hit it, and a client that can see its remaining
+budget can slow down.
+
+The API page is now a reference: authentication, the scope table, every
+endpoint, and what each status code means.

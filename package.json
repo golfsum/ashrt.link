@@ -12,7 +12,8 @@
     "test": "node --test \"test/*.test.js\"",
     "test:watch": "node --test --watch \"test/*.test.js\"",
     "migrate": "node scripts/migrate.js",
-    "migrate:dry": "node scripts/migrate.js --dry-run"
+    "migrate:dry": "node scripts/migrate.js --dry-run",
+    "doctor": "node scripts/doctor.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

@@ -13,6 +13,12 @@ const ICONS = {
 let links = []
 let campaigns = []
 let editingSlug = null
+/** Whether this plan may set an expiry. The server enforces it either way. */
+let canExpire = false
+/** Whether this plan may route by country or device. Server enforces it too. */
+let canRoute = false
+/** The rule set being edited, before it is saved. */
+let draftRules = []
 let activeTag = ''
 let cursor = 0
 let hasMore = false
@@ -191,7 +197,26 @@ function resetModal() {
   $('m-campaign').value = ''
   for (const k of ['utm_source', 'utm_medium', 'utm_campaign']) $(k).value = ''
   $('m-err').textContent = ''
+  $('m-traffic').hidden = true
+  $('m-history').hidden = true
+  $('m-expires').value = ''
+  $('rules-wrap').hidden = true
+  $('rules-wrap').open = false
+  draftRules = []
 }
+
+/**
+ * A local datetime input, from and to a timestamp.
+ *
+ * The input has no timezone, so it is read as the browser's local time, which
+ * is what someone means when they type "the 30th at 9pm".
+ */
+const toLocalInput = (ts) => {
+  if (!ts) return ''
+  const d = new Date(ts - new Date().getTimezoneOffset() * 60000)
+  return d.toISOString().slice(0, 16)
+}
+const fromLocalInput = (value) => (value ? new Date(value).getTime() : null)
 
 function openCreate() {
   editingSlug = null
@@ -219,8 +244,144 @@ function openEdit(slug) {
   // cannot change. UTM tags are already baked into the destination above.
   $('alias-field').hidden = true
   $('m-utm-wrap').hidden = true
+  draftRules = (l.rules || []).map((r) => ({ ...r, values: [...(r.values || [])] }))
+  renderRules(l)
+  $('m-expires').value = toLocalInput(l.expiresAt)
+  $('expiry-field').hidden = false
+  $('m-expires').disabled = !canExpire
+  $('expiry-lock').textContent = canExpire ? '(optional)' : '(paid plans)'
+  renderTraffic(l)
+  renderHistory(l)
   $('modal').classList.add('show')
   $('m-url').focus()
+}
+
+const RULE_TYPES = {
+  country: { label: 'Country is', placeholder: 'US, CA, GB' },
+  device: { label: 'Device is', placeholder: 'mobile, desktop, tablet' },
+  os: { label: 'System is', placeholder: 'ios, android, windows' },
+}
+
+/**
+ * Routing rules, in the order they are evaluated.
+ *
+ * The order is the logic: the first rule that matches wins, and the link's own
+ * destination is what everyone else gets. Saying that on the page is the
+ * difference between a rule editor people trust and one they experiment with.
+ */
+function renderRules(link) {
+  $('rules-wrap').hidden = false
+  const routed = link?.routed || {}
+
+  $('rules-note').innerHTML = canRoute
+    ? `Checked in order, top to bottom. The first rule that matches wins. Anyone no rule matches goes to the destination above.`
+    : `Routing is on the paid plans. <a href="/account">See plans</a>`
+
+  $('rules-list').innerHTML = draftRules
+    .map((r, i) => {
+      const served = routed[r.id]
+      return `<div class="rule-row" data-i="${i}">
+        <select data-field="type" ${canRoute ? '' : 'disabled'}>
+          ${Object.entries(RULE_TYPES)
+            .map(([k, v]) => `<option value="${k}"${r.type === k ? ' selected' : ''}>${v.label}</option>`)
+            .join('')}
+        </select>
+        <input data-field="values" class="mono" value="${escapeHtml((r.values || []).join(', '))}"
+               placeholder="${RULE_TYPES[r.type]?.placeholder || ''}" ${canRoute ? '' : 'disabled'} />
+        <button type="button" class="icon-btn danger" data-rule-del="${i}" title="Remove"${canRoute ? '' : ' disabled'}>✕</button>
+        <input data-field="url" value="${escapeHtml(r.url || '')}" placeholder="https://example.com/where"
+               ${canRoute ? '' : 'disabled'} />
+        ${served ? `<span class="rule-served">${num(served)} click${served === 1 ? '' : 's'}</span>` : ''}
+      </div>`
+    })
+    .join('')
+
+  if (draftRules.length && routed.default) {
+    $('rules-list').innerHTML += `<div class="rule-default">Everyone else: ${num(routed.default)} click${routed.default === 1 ? '' : 's'}</div>`
+  }
+
+  $('rule-add').disabled = !canRoute || draftRules.length >= 20
+
+  $('rules-list').querySelectorAll('[data-rule-del]').forEach((b) => {
+    b.onclick = () => {
+      draftRules.splice(Number(b.dataset.ruleDel), 1)
+      renderRules(link)
+    }
+  })
+  $('rules-list').querySelectorAll('.rule-row').forEach((row) => {
+    row.querySelectorAll('[data-field]').forEach((input) => {
+      input.oninput = () => {
+        const rule = draftRules[Number(row.dataset.i)]
+        const field = input.dataset.field
+        if (field === 'values') rule.values = input.value.split(',').map((v) => v.trim()).filter(Boolean)
+        else rule[field] = input.value
+      }
+    })
+  })
+}
+
+/**
+ * How much is riding on this link.
+ *
+ * Changing a destination is easy to do without thinking and impossible to
+ * think about without this number: the link may be printed on something, or in
+ * an email that went out last week.
+ */
+function renderTraffic(l) {
+  const recent = l.recentClicks || 0
+  const box = $('m-traffic')
+  box.hidden = recent < 1
+  if (box.hidden) return
+  box.innerHTML =
+    `<b>${num(recent)}</b> click${recent === 1 ? '' : 's'} in the last ${l.recentDays || 30} days. ` +
+    `Anyone who already has this link will go wherever you point it next.`
+}
+
+/** Where this link used to point, most recent first. */
+function renderHistory(l) {
+  const history = l.history || []
+  const box = $('m-history')
+  box.hidden = !history.length
+  if (box.hidden) return
+
+  box.innerHTML = `<details class="hist">
+      <summary>Previous destinations (${history.length})</summary>
+      ${history
+        .map(
+          (h) => `<div class="hist-row">
+            <span class="hist-url mono" title="${escapeHtml(h.url)}">${escapeHtml(h.url)}</span>
+            <span class="hist-when">${fmtDate(h.changedAt)}</span>
+            <button class="btn btn-ghost btn-sm" data-revert="${h.changedAt}">Restore</button>
+          </div>`,
+        )
+        .join('')}
+    </details>`
+
+  box.querySelectorAll('[data-revert]').forEach((b) => (b.onclick = () => revertTo(b.dataset.revert, b)))
+}
+
+async function revertTo(changedAt, btn) {
+  btn.disabled = true
+  $('m-err').textContent = ''
+  try {
+    const res = await fetch(`/api/links/${encodeURIComponent(editingSlug)}/revert`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ changedAt: Number(changedAt) }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      $('m-err').textContent = data.error || 'Could not restore that destination'
+      return
+    }
+    closeModal()
+    toast('Destination restored')
+    await load()
+  } catch {
+    $('m-err').textContent = 'Network error. Try again.'
+  } finally {
+    btn.disabled = false
+  }
 }
 
 const closeModal = () => $('modal').classList.remove('show')
@@ -250,6 +411,11 @@ async function save() {
   if (!editingSlug) {
     if ($('m-alias').value.trim()) body.alias = $('m-alias').value.trim()
     body.utm = utmValues()
+  } else {
+    if (canExpire) body.expiresAt = fromLocalInput($('m-expires').value)
+    // Only send rules when this plan may set them, so a free account's save
+    // does not come back as a 402 about a feature it never touched.
+    if (canRoute) body.rules = draftRules.filter((r) => r.url && (r.values || []).length)
   }
 
   try {
@@ -314,6 +480,10 @@ $('create-link').addEventListener('click', openCreate)
 $('empty-create').addEventListener('click', openCreate)
 $('m-cancel').addEventListener('click', closeModal)
 $('m-save').addEventListener('click', save)
+$('rule-add').addEventListener('click', () => {
+  draftRules.push({ type: 'country', values: [], url: '' })
+  renderRules(links.find((l) => l.slug === editingSlug))
+})
 $('m-url').addEventListener('keydown', (e) => e.key === 'Enter' && save())
 $('modal').addEventListener('click', (e) => e.target === $('modal') && closeModal())
 
@@ -337,6 +507,187 @@ document.addEventListener('keydown', (e) => {
 ;(async () => {
   const user = await window.shellReady
   if (!user) return
+  canExpire = ['pro', 'business'].includes(user.plan)
+  canRoute = canExpire
+  // Hidden rather than shown-and-refused: the server still enforces it.
+  $('import-link').hidden = !canExpire
   await loadCampaigns()
   await load()
 })()
+
+/* --------------------------------- import --------------------------------- */
+
+/**
+ * Parse what somebody pasted or uploaded.
+ *
+ * Two shapes, because both turn up: a plain list of URLs, and a CSV with a
+ * header row. Anything with a header containing "url" is treated as CSV; a bare
+ * list is read positionally as url, alias, title, tags. Nothing is guessed
+ * beyond that — a row that cannot be read is reported by the server rather than
+ * silently dropped here.
+ */
+function parseImport(text) {
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+  if (!lines.length) return []
+
+  const header = splitCsvLine(lines[0]).map((h) => h.trim().toLowerCase())
+  const isCsv = header.includes('url')
+  const columns = isCsv ? header : ['url', 'alias', 'title', 'tags']
+  const body = isCsv ? lines.slice(1) : lines
+
+  return body.map((line) => {
+    const cells = splitCsvLine(line)
+    const row = {}
+    columns.forEach((name, i) => {
+      const value = (cells[i] || '').trim()
+      if (!value) return
+      if (name === 'tags') row.tags = value.split(/[;|]/).map((t) => t.trim()).filter(Boolean)
+      else if (['url', 'alias', 'title', 'campaign'].includes(name)) row[name] = value
+    })
+    return row
+  })
+}
+
+/** Split one CSV line, honouring quotes. */
+function splitCsvLine(line) {
+  const out = []
+  let cell = ''
+  let quoted = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (quoted) {
+      if (ch === '"' && line[i + 1] === '"') {
+        cell += '"'
+        i++
+      } else if (ch === '"') quoted = false
+      else cell += ch
+    } else if (ch === '"') quoted = true
+    else if (ch === ',') {
+      out.push(cell)
+      cell = ''
+    } else cell += ch
+  }
+  out.push(cell)
+  return out
+}
+
+const IMPORT_LABELS = {
+  ready: 'Ready',
+  created: 'Created',
+  flagged: 'Created, flagged for review',
+  duplicate: 'Ready (same destination as another row)',
+  empty: 'No URL',
+  invalid: 'Bad URL',
+  bad_alias: 'Bad short code',
+  alias_taken: 'Short code in use',
+  alias_repeated: 'Short code repeated',
+  over_quota: 'Past your allowance',
+  failed: 'Failed',
+}
+
+function renderImport(data) {
+  const rows = data.rows || []
+  const good = rows.filter((r) => r.ok)
+  $('import-preview').hidden = false
+  $('import-preview').innerHTML =
+    `<div class="import-summary">${
+      data.dryRun
+        ? `${num(good.length)} ready, ${num(rows.length - good.length)} to fix`
+        : `${num(data.created)} created, ${num(data.rejected)} not`
+    }</div>` +
+    `<div class="import-rows">${rows
+      .map(
+        (r) => `<div class="import-row ${r.ok ? 'ok' : 'bad'}">
+          <span class="import-line">${r.line}</span>
+          <span class="import-url mono">${escapeHtml(r.slug ? '/' + r.slug + '  ' : '')}${escapeHtml(r.url || '(empty)')}</span>
+          <span class="import-status">${escapeHtml(IMPORT_LABELS[r.status] || r.status)}${
+            r.error ? `: ${escapeHtml(r.error)}` : ''
+          }</span>
+        </div>`,
+      )
+      .join('')}</div>`
+
+  $('import-go').disabled = !data.dryRun || good.length === 0
+  $('import-go').textContent = data.dryRun
+    ? `Create ${num(good.length)} link${good.length === 1 ? '' : 's'}`
+    : 'Done'
+}
+
+async function runImport({ dryRun }) {
+  const rows = parseImport($('import-text').value)
+  $('import-err').textContent = ''
+  if (!rows.length) {
+    $('import-err').textContent = 'Paste some URLs, or choose a file.'
+    return
+  }
+
+  const btn = dryRun ? $('import-check') : $('import-go')
+  btn.disabled = true
+  try {
+    const res = await fetch('/api/links/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows, dryRun }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      $('import-err').textContent = data.error || 'Could not read that file'
+      if (data.needsUpgrade) $('import-err').innerHTML += ' <a href="/account">See plans</a>'
+      return
+    }
+    renderImport(data)
+    if (!dryRun) {
+      toast(`${data.created} link${data.created === 1 ? '' : 's'} created`)
+      await load()
+    }
+  } catch {
+    $('import-err').textContent = 'Network error. Try again.'
+  } finally {
+    btn.disabled = false
+  }
+}
+
+function openImport() {
+  $('import-text').value = ''
+  $('import-preview').hidden = true
+  $('import-err').textContent = ''
+  $('import-count').textContent = ''
+  $('import-go').disabled = true
+  $('import-go').textContent = 'Create links'
+  $('import-modal').classList.add('show')
+  $('import-text').focus()
+}
+
+$('import-link').addEventListener('click', openImport)
+$('import-cancel').addEventListener('click', () => $('import-modal').classList.remove('show'))
+$('import-check').addEventListener('click', () => runImport({ dryRun: true }))
+$('import-go').addEventListener('click', () => runImport({ dryRun: false }))
+$('import-pick').addEventListener('click', () => $('import-file').click())
+$('import-file').addEventListener('change', async (e) => {
+  const file = e.target.files?.[0]
+  if (!file) return
+  $('import-text').value = await file.text()
+  $('import-count').textContent = `${num(parseImport($('import-text').value).length)} rows read from ${file.name}`
+  await runImport({ dryRun: true })
+})
+$('import-text').addEventListener('input', () => {
+  const n = parseImport($('import-text').value).length
+  $('import-count').textContent = n ? `${num(n)} row${n === 1 ? '' : 's'}` : ''
+  $('import-go').disabled = true
+  $('import-preview').hidden = true
+})
+$('csv-template').addEventListener('click', (e) => {
+  e.preventDefault()
+  const csv =
+    'url,alias,title,tags,campaign\r\n' +
+    'https://example.com/spring,spring-sale,Spring landing page,social;q3,\r\n' +
+    'https://example.com/summer,,Summer teaser,email,\r\n'
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+  a.download = 'ashrt-import-template.csv'
+  a.click()
+  URL.revokeObjectURL(a.href)
+})

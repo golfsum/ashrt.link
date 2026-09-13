@@ -31,9 +31,36 @@ export function createFakeKV() {
   /** zset as Map<member, score> */
   const asZset = asHash
 
+  /**
+   * Redis index ranges, including the negative ones.
+   *
+   * -1 means the last element, not "before the start", so `0 -1` is the whole
+   * range rather than the empty one a naive slice would produce.
+   */
+  const sliceRange = (arr, rawStart, rawStop) => {
+    const n = arr.length
+    let start = Number(rawStart)
+    let stop = Number(rawStop)
+    if (start < 0) start = Math.max(n + start, 0)
+    if (stop < 0) stop = n + stop
+    if (stop >= n) stop = n - 1
+    if (start > stop || start >= n) return []
+    return arr.slice(start, stop + 1)
+  }
+
+  /**
+   * Failure injection.
+   *
+   * Real KV goes down mid-write, and the store is supposed to notice instead of
+   * swallowing it, so a test needs a way to make chosen commands fail.
+   */
+  let failCheck = null
+
   function run(cmd) {
     const [rawOp, ...args] = cmd
     const op = String(rawOp).toUpperCase()
+
+    if (failCheck && failCheck(cmd)) throw new Error(`fake-kv: injected failure on ${op}`)
 
     switch (op) {
       case 'HSET': {
@@ -58,6 +85,10 @@ export function createFakeKV() {
         for (const f of args.slice(1)) if (h.delete(String(f))) n++
         return n
       }
+      case 'HEXISTS':
+        return asHash(args[0]).has(String(args[1])) ? 1 : 0
+      case 'HKEYS':
+        return [...asHash(args[0]).keys()]
       case 'HLEN':
         return asHash(args[0]).size
       case 'HINCRBY': {
@@ -105,12 +136,24 @@ export function createFakeKV() {
         for (const score of z.values()) if (score >= lo && score <= hi) n++
         return n
       }
+      case 'ZRANGE':
       case 'ZREVRANGE': {
         const z = asZset(args[0])
-        const sorted = [...z.entries()].sort((a, b) => b[1] - a[1]).map(([m]) => m)
-        const start = Number(args[1])
-        const stop = Number(args[2])
-        return sorted.slice(start, stop < 0 ? undefined : stop + 1)
+        // Redis orders ties by member, not by insertion, and ZRANGE REV is the
+        // modern spelling of ZREVRANGE. Both matter here: the doctor reads the
+        // whole recency index with ZRANGE key 0 -1, and a stand-in that only
+        // knew ZREVRANGE would fail the repair path for a reason production
+        // would never hit.
+        const rev = op === 'ZREVRANGE' || args.slice(3).some((a) => String(a).toUpperCase() === 'REV')
+        const withScores = args
+          .slice(3)
+          .some((a) => String(a).toUpperCase() === 'WITHSCORES')
+        const entries = [...z.entries()].sort((a, b) =>
+          a[1] === b[1] ? (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0) : a[1] - b[1],
+        )
+        if (rev) entries.reverse()
+        const picked = sliceRange(entries, args[1], args[2])
+        return withScores ? picked.flatMap(([m, sc]) => [m, String(sc)]) : picked.map(([m]) => m)
       }
 
       case 'LPUSH': {
@@ -198,6 +241,10 @@ export function createFakeKV() {
       return `http://127.0.0.1:${server.address().port}`
     },
     close: () => new Promise((r) => server.close(r)),
+    /** Make every command matching `fn` fail. Pass null to stop. */
+    failWhen: (fn) => {
+      failCheck = fn
+    },
     /** Commands the real store issued, useful for asserting round-trip counts. */
     keys: () => [...db.keys()],
   }

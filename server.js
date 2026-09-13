@@ -2,8 +2,6 @@ import express from 'express'
 import cors from 'cors'
 import crypto from 'node:crypto'
 import { readdirSync } from 'node:fs'
-import dns from 'node:dns'
-import { promisify } from 'node:util'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 import dotenv from 'dotenv'
@@ -36,6 +34,38 @@ import { PAID_PLANS, limitFor, can, requireFeature, isPaid, publicPlans, planIdO
 import { validateUrl, checkStored, applyUtm, registrableDomain } from './lib/urls.js'
 import { hit, limit, clientId, clientIp, hashClient } from './lib/ratelimit.js'
 import { classifyRequest } from './lib/bots.js'
+import { checkIntegrity, applyFixes } from './lib/integrity.js'
+import { sanitizeRules, resolveDestination, ruleLabel, RULE_TYPES, MAX_RULES } from './lib/routing.js'
+import { dueLinks, checkUrl, applyResult, isBroken, HEALTH_STATES } from './lib/health.js'
+import {
+  SCOPES,
+  ALL_SCOPES,
+  DEFAULT_SCOPES,
+  MAX_KEYS,
+  newApiKey as mintApiKey,
+  keyPrefix,
+  sanitizeScopes,
+  keysOf,
+  publicKey,
+  matchKey,
+  keyAllows,
+} from './lib/apikeys.js'
+import {
+  renderSvg as renderQrSvg,
+  MODULE_STYLES as QR_MODULE_STYLES,
+  EYE_STYLES as QR_EYE_STYLES,
+  EC_LEVELS as QR_EC_LEVELS,
+} from './lib/qr.js'
+import {
+  DOMAIN_RE,
+  DOMAIN_STATES,
+  diagnose as diagnoseDomain,
+  dnsInstructions,
+  verificationToken as domainVerificationToken,
+  detachDomain,
+  attachDomain,
+  platformEnabled as domainPlatformEnabled,
+} from './lib/domains.js'
 import {
   trackAsync,
   sourceOf,
@@ -109,7 +139,6 @@ app.set('trust proxy', true)
 
 /* ---------------------------- custom-domain host -------------------------- */
 
-const dnsResolveTxt = promisify(dns.resolveTxt)
 
 /** Is this host one of ours, rather than a customer's branded domain? */
 function hostMatchesSelf(host) {
@@ -145,9 +174,15 @@ async function ownerForHost(host) {
   try {
     const u = await users.getByDomain(h)
     // Only a domain the account actually proved it controls serves links.
-    if (u && (u.domains || []).some((d) => d.domain === h && d.status === 'verified') && u.status !== 'suspended') {
-      owner = u
-    }
+    //
+    // "verified" is the status older records carry; it is still honoured so
+    // that a domain set up before the diagnostics existed does not stop
+    // working on deploy. A live domain resolves to its owner and its own
+    // settings, which is what the branded-host routing below needs.
+    const entry = (u?.domains || []).find(
+      (d) => d.domain === h && (LIVE_DOMAIN_STATES.has(d.status) || d.status === 'verified'),
+    )
+    if (u && entry && u.status !== 'suspended') owner = { user: u, entry }
   } catch {
     owner = null
   }
@@ -215,7 +250,18 @@ app.post('/api/billing/webhook', express.raw({ type: '*/*' }), async (req, res) 
 
 /* ============================ baseline middleware ========================= */
 
-app.use(express.json({ limit: '64kb' }))
+/**
+ * Request bodies stay small, with one exception.
+ *
+ * 64kb is plenty for every endpoint here and keeps a large-body denial of
+ * service cheap to refuse. The QR style route carries a base64 logo, so it gets
+ * its own, larger, parser rather than raising the limit for everything.
+ */
+const jsonBody = express.json({ limit: '64kb' })
+const jsonBodyWithImage = express.json({ limit: '128kb' })
+app.use((req, res, next) =>
+  (req.path === '/api/qr/style' ? jsonBodyWithImage : jsonBody)(req, res, next),
+)
 
 // Cross-origin API access is for API-key callers, never for cookie sessions:
 // no credentials, so a browser on another origin cannot ride a login cookie.
@@ -289,6 +335,16 @@ app.use(async (req, res, next) => {
   if (!req.user || req.authMethod !== 'apikey' || !req.path.startsWith('/api/')) return next()
   apiUsage.record(req.user.id).catch(() => {})
   const result = await hit('api:day', req.user.id, { user: req.user }).catch(() => null)
+
+  // Tell the caller where they stand on every response, not only when they run
+  // out. A client that can see its remaining quota can slow down; one that only
+  // finds out at 429 cannot.
+  if (result && Number.isFinite(result.limit)) {
+    res.set('X-RateLimit-Limit', String(result.limit))
+    res.set('X-RateLimit-Remaining', String(result.remaining))
+    res.set('X-RateLimit-Reset', String(Math.floor(result.resetAt / 1000)))
+  }
+
   if (result && !result.allowed) {
     res.set('Retry-After', String(result.retryAfter))
     return res.status(429).json({
@@ -337,7 +393,11 @@ const RESERVED = buildReserved()
  * on or off never breaks links already shared.
  */
 function shortUrlFor(slug, user) {
-  const brand = (user?.domains || []).find((d) => d.status === 'verified')
+  const live = (user?.domains || []).filter(
+    (d) => LIVE_DOMAIN_STATES.has(d.status) || d.status === 'verified',
+  )
+  // The account's chosen default wins; otherwise the first one that works.
+  const brand = live.find((d) => d.isDefault) || live[0]
   if (CUSTOM_DOMAINS_LIVE && brand) return `https://${brand.domain}/${slug}`
   return `${BASE_URL}/${slug}`
 }
@@ -346,6 +406,35 @@ const shortUrl = (slug) => `${BASE_URL}/${slug}`
 const withUrl = (l) => ({ ...l, shortUrl: shortUrl(l.slug) })
 const randomSlug = () => crypto.randomBytes(6).toString('base64url').slice(0, 7)
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+/** How many of the recorded days to count as "recent" for a change warning. */
+const RECENT_DAYS = 30
+
+/** Clicks in the last 30 days, from the per-day map already on the record. */
+function recentClicks(link) {
+  const days = link.daily || {}
+  const cutoff = new Date(Date.now() - RECENT_DAYS * 864e5).toISOString().slice(0, 10)
+  let total = 0
+  for (const [day, n] of Object.entries(days)) if (day >= cutoff) total += Number(n) || 0
+  return total
+}
+
+/**
+ * Remember where a link used to point.
+ *
+ * A short link is often printed, scheduled or handed to someone else, so a
+ * changed destination is a change to something already out in the world. Ten
+ * entries is enough to answer "what did this used to be" and to undo a mistake,
+ * without letting one record grow unbounded.
+ */
+const HISTORY_LIMIT = 10
+function recordDestinationChange(link, nextUrl, by) {
+  if (!link.url || link.url === nextUrl) return
+  link.history = [{ url: link.url, changedAt: Date.now(), by: by || null }, ...(link.history || [])].slice(
+    0,
+    HISTORY_LIMIT,
+  )
+}
 
 /** Public-safe view of a link: never leaks the guest token hash or internals. */
 function publicLink(l, { admin = false, user = null } = {}) {
@@ -363,6 +452,24 @@ function publicLink(l, { admin = false, user = null } = {}) {
     expiresAt: l.expiresAt || null,
     lastClickAt: l.lastClickAt || null,
     guest: Boolean(l.guest),
+  }
+  // The owner (and an admin) can see where this link used to point, and how
+  // much traffic it has been getting, so changing it is an informed decision.
+  if (admin || (user && l.owner === user.id)) {
+    out.history = (l.history || []).slice(0, HISTORY_LIMIT)
+    out.recentClicks = recentClicks(l)
+    out.recentDays = RECENT_DAYS
+    // Scans of this link's QR code, which are clicks that arrived with our
+    // marker. Counted, not estimated.
+    out.scans = (l.channels || {}).qr || 0
+    out.rules = l.rules || []
+    // Only ever what the last scheduled check recorded. A click never waits for
+    // somebody else's server.
+    out.health = l.health
+      ? { ...l.health, label: HEALTH_STATES[l.health.status] || l.health.status }
+      : null
+    // Clicks each rule has served, so a rule can be judged on its own traffic.
+    out.routed = l.routed || {}
   }
   if (admin) {
     out.owner = l.owner
@@ -396,7 +503,10 @@ function safeUser(u, { key = false } = {}) {
     status: u.status || 'active',
     createdAt: u.createdAt,
   }
-  if (key) out.apiKey = u.apiKey || null
+  // The plaintext key is deliberately not here. Keys are hashed at rest and
+  // shown once at creation; the one exception is an account that predates that,
+  // which has its own endpoint below and says plainly that it is the last time.
+  if (key) out.hasLegacyKey = Boolean(u.apiKey)
   return out
 }
 
@@ -569,15 +679,179 @@ app.get('/api/account', requireUser, (req, res) => {
   res.json({ user: safeUser(req.user, { key: true }) })
 })
 
-app.post('/api/account/rotate-key', requireUser, async (req, res) => {
-  const oldApiKeyHash = req.user.apiKeyHash || hashApiKey(req.user.apiKey)
-  const apiKey = newApiKey()
-  req.user.apiKey = apiKey
-  req.user.apiKeyHash = hashApiKey(apiKey)
-  req.user.apiKeyCreatedAt = Date.now()
-  await users.update(req.user, { oldApiKeyHash })
+/**
+ * Gate a route on what the presenting key is allowed to do.
+ *
+ * Only API keys are scoped. A signed-in person in their own dashboard has full
+ * access to their own account by definition, and adding scopes to a session
+ * would be theatre.
+ *
+ * Applied to the route, not checked inside the handler, so a new route cannot
+ * quietly inherit full access by forgetting a line.
+ */
+function requireScope(scope) {
+  return (req, res, next) => {
+    if (req.authMethod !== 'apikey') return next()
+    if (keyAllows(req.apiKey, scope)) return next()
+    res.status(403).json({
+      error: `This key does not have the "${scope}" scope.`,
+      scope,
+      needsScope: scope,
+    })
+  }
+}
+
+/**
+ * Record that a key was used, at most once an hour.
+ *
+ * Useful enough to answer "is this key still in use before I revoke it", not
+ * useful enough to write the account record on every API call.
+ */
+const LAST_USED_RESOLUTION = 3600 * 1000
+function touchKey(req) {
+  const key = req.apiKey
+  if (!key || key.legacy) return
+  if (key.lastUsedAt && Date.now() - key.lastUsedAt < LAST_USED_RESOLUTION) return
+  key.lastUsedAt = Date.now()
+  users.update(req.user).catch(() => {})
+}
+
+app.use('/api', (req, res, next) => {
+  if (req.authMethod === 'apikey') touchKey(req)
+  next()
+})
+
+/* -------------------------------- API keys -------------------------------- */
+
+/**
+ * Keys an account holds. Metadata only: a key is shown once, at creation, and
+ * is not recoverable afterwards by anyone, including us.
+ */
+app.get('/api/keys', requireUser, (req, res) => {
+  res.json({
+    keys: keysOf(req.user).map(publicKey),
+    scopes: SCOPES,
+    max: MAX_KEYS,
+  })
+})
+
+/**
+ * Mint a key.
+ *
+ * Several keys rather than one rotated in place, because one key ends up in
+ * three places and rotating it then breaks two of them. Scopes because a script
+ * that reads statistics has no business being able to delete every link.
+ */
+/**
+ * The original key, for an account that predates hashed storage.
+ *
+ * Those accounts still hold their key in the clear, which is exactly what the
+ * new model exists to stop. Rather than deleting it and breaking whatever is
+ * using it, it can be read here once more, with the warning that replacing it
+ * is the point. Creating a named key or revoking this one removes it for good.
+ */
+app.get('/api/keys/legacy', requireUser, (req, res) => {
+  if (!req.user.apiKey) return res.status(404).json({ error: 'No key of that kind on this account.' })
+  res.json({
+    key: req.user.apiKey,
+    note: 'This key predates hashed storage, which is why it can still be shown. Replace it with a named key and it will not be displayed again.',
+  })
+})
+
+app.post('/api/keys', requireUser, async (req, res) => {
+  const existing = keysOf(req.user)
+  if (existing.length >= MAX_KEYS) {
+    return res.status(400).json({ error: `An account can hold ${MAX_KEYS} keys. Revoke one first.` })
+  }
+
+  const key = mintApiKey()
+  const record = {
+    id: crypto.randomBytes(6).toString('base64url'),
+    name: String(req.body?.name || '').trim().slice(0, 60) || 'Untitled key',
+    hash: hashApiKey(key),
+    prefix: keyPrefix(key),
+    scopes: sanitizeScopes(req.body?.scopes),
+    createdAt: Date.now(),
+    lastUsedAt: null,
+  }
+
+  req.user.apiKeys = [...(req.user.apiKeys || []), record]
+  await users.update(req.user)
   trackAsync('api_key_created')
-  res.json({ apiKey })
+
+  // The only time the plaintext exists outside the caller's hands.
+  res.json({ key, created: publicKey(record) })
+})
+
+app.patch('/api/keys/:id', requireUser, async (req, res) => {
+  const key = (req.user.apiKeys || []).find((k) => k.id === req.params.id)
+  if (!key) return res.status(404).json({ error: 'No such key' })
+
+  if (req.body?.name !== undefined) key.name = String(req.body.name).trim().slice(0, 60) || key.name
+  if (req.body?.scopes !== undefined) key.scopes = sanitizeScopes(req.body.scopes)
+  await users.update(req.user)
+  res.json({ key: publicKey(key) })
+})
+
+/**
+ * Revoke a key.
+ *
+ * The index entry goes with it. A revoked key that is still indexed still
+ * authenticates, which is the whole failure this endpoint exists to prevent.
+ */
+app.delete('/api/keys/:id', requireUser, async (req, res) => {
+  const all = keysOf(req.user)
+  const key = all.find((k) => k.id === req.params.id)
+  if (!key) return res.json({ ok: true })
+
+  if (key.legacy) {
+    // The account's original single key. Removing it means clearing the fields
+    // it lives in rather than removing a list entry.
+    req.user.apiKey = null
+    req.user.apiKeyHash = null
+  } else {
+    req.user.apiKeys = (req.user.apiKeys || []).filter((k) => k.id !== key.id)
+  }
+
+  await users.update(req.user, { removedKeyHashes: [key.hash] })
+  await audit({
+    actor: req.user,
+    action: 'user.revoke-key',
+    targetType: 'user',
+    targetId: req.user.id,
+    meta: { keyName: key.name },
+  })
+  res.json({ ok: true })
+})
+
+/**
+ * Replace the account's original key.
+ *
+ * Kept because callers exist, and given a meaning that fits the new model: it
+ * retires the single key an older account carries and issues a named one in its
+ * place. Keys added since are left alone — rotating one credential should not
+ * take out the others.
+ */
+app.post('/api/account/rotate-key', requireUser, async (req, res) => {
+  const legacy = keysOf(req.user).find((k) => k.legacy)
+  const key = mintApiKey()
+  const record = {
+    id: crypto.randomBytes(6).toString('base64url'),
+    name: 'Rotated key',
+    hash: hashApiKey(key),
+    prefix: keyPrefix(key),
+    scopes: [...DEFAULT_SCOPES],
+    createdAt: Date.now(),
+    lastUsedAt: null,
+  }
+
+  req.user.apiKey = null
+  req.user.apiKeyHash = null
+  req.user.apiKeys = [...(req.user.apiKeys || []), record]
+  await users.update(req.user, { removedKeyHashes: legacy ? [legacy.hash] : [] })
+  trackAsync('api_key_created')
+
+  res.json({ apiKey: key, created: publicKey(record) })
 })
 
 app.patch('/api/account', requireUser, async (req, res) => {
@@ -591,64 +865,75 @@ app.patch('/api/account', requireUser, async (req, res) => {
 
 /* ----------------------------- custom domains ----------------------------- */
 
-const DOMAIN_RE = /^(?!-)[a-z0-9-]+(\.[a-z0-9-]+)+$/i
 
 /**
  * Custom domains.
  *
- * The routing is real: a request arriving on a verified branded host resolves
- * that host to its owner and serves only that owner's links (see the redirect
- * handler). What is deliberately gated is *verification*: a domain has to prove
- * it is controlled by the account before it will serve anything, otherwise
- * anyone could claim `links.someoneelse.com` and catch traffic meant for them.
+ * Three questions have to be answered before a branded host can serve
+ * anything, and they are answered in this order:
  *
- * Verification is a DNS TXT record. It needs no platform API and no secrets, it
- * is checked on demand, and it is re-checkable if a domain is ever moved.
+ *   1. Does the account control the domain? A TXT record proves it. Without
+ *      this, anyone could claim links.someoneelse.com and catch their traffic.
+ *   2. Does the domain point here? A CNAME, or an A record for an apex domain.
+ *   3. Is there a certificate? The platform issues it, not us.
  *
- * CUSTOM_DOMAINS=1 turns the feature on. It stays off by default because the
- * host also has to be pointed at this deployment at the platform level, which
- * is a manual step outside the app.
+ * lib/domains.js does the checking and reports which of the three is missing,
+ * because "pending" on its own turns a five-minute DNS task into a support
+ * ticket.
+ *
+ * The feature is on by default now that it reports its own state honestly.
+ * CUSTOM_DOMAINS=0 forces it off.
  */
-const CUSTOM_DOMAINS_LIVE = process.env.CUSTOM_DOMAINS === '1'
+const CUSTOM_DOMAINS_LIVE = process.env.CUSTOM_DOMAINS !== '0'
 
-/** The TXT value a domain must publish to prove it belongs to an account. */
-function domainVerificationToken(userId, domain) {
-  return (
-    'ashrt-verify=' +
-    crypto
-      .createHmac('sha256', process.env.SESSION_SECRET || 'ashrt-dev-salt')
-      .update(`${userId}|${domain.toLowerCase()}`)
-      .digest('base64url')
-      .slice(0, 32)
-  )
+/** Statuses that mean the host should be serving this account's links. */
+const LIVE_DOMAIN_STATES = new Set(['active', 'pending_ssl'])
+
+/**
+ * A redirect target an account can set for its own domain.
+ *
+ * Runs through the same validation as any destination. A branded host is still
+ * our infrastructure, so its root and fallback redirects cannot be used to
+ * reach anything a short link could not.
+ */
+async function validateDomainTarget(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return { ok: true, url: null }
+  const checked = validateUrl(raw, { blocked: await blockedDomains() })
+  if (!checked.ok) return { ok: false, error: checked.error }
+  return { ok: true, url: checked.url }
 }
 
-const domainInstructions = (domain, token) => ({
-  txt: { name: `_ashrt.${domain}`, type: 'TXT', value: token },
-  cname: { name: domain, type: 'CNAME', value: 'cname.vercel-dns.com' },
+/** Everything the settings page needs to show one domain. */
+const domainView = (user, d) => ({
+  domain: d.domain,
+  status: d.status || 'pending_dns',
+  statusLabel: DOMAIN_STATES[d.status] || DOMAIN_STATES.pending_dns,
+  live: LIVE_DOMAIN_STATES.has(d.status),
+  addedAt: d.addedAt || null,
+  verifiedAt: d.verifiedAt || null,
+  lastCheckedAt: d.lastCheckedAt || null,
+  message: d.message || null,
+  checks: d.checks || [],
+  isDefault: Boolean(d.isDefault),
+  rootRedirect: d.rootRedirect || null,
+  notFoundRedirect: d.notFoundRedirect || null,
+  records: dnsInstructions(d.domain, domainVerificationToken(user.id, d.domain)),
 })
 
 app.get('/api/domains', requireUser, (req, res) => {
-  const domains = (req.user.domains || []).map((d) => ({
-    ...d,
-    token: domainVerificationToken(req.user.id, d.domain),
-    dns: domainInstructions(d.domain, domainVerificationToken(req.user.id, d.domain)),
-  }))
   res.json({
-    domains,
+    domains: (req.user.domains || []).map((d) => domainView(req.user, d)),
     available: CUSTOM_DOMAINS_LIVE,
     entitled: can(req.user, 'customDomains'),
     limit: limitFor(req.user, 'domains'),
+    autoAttach: domainPlatformEnabled(),
   })
 })
 
 app.post('/api/domains', requireUser, async (req, res) => {
   if (!CUSTOM_DOMAINS_LIVE) {
-    return res.status(503).json({
-      error:
-        'Custom domains are not switched on for this deployment yet. The routing is built, but the domain also has to be pointed here at the hosting level first.',
-      unavailable: true,
-    })
+    return res.status(503).json({ error: 'Custom domains are switched off on this deployment.', unavailable: true })
   }
   const deny = requireFeature(req.user, 'customDomains', 'Custom domains')
   if (deny) return res.status(deny.status).json(deny.body)
@@ -667,15 +952,20 @@ app.post('/api/domains', requireUser, async (req, res) => {
   }
   if (req.user.domains.some((d) => d.domain === domain)) return res.status(409).json({ error: 'Domain already added' })
 
-  // One account per domain, first to verify. Claiming here only reserves it;
-  // it serves nothing until the TXT record checks out.
+  // One account per domain, first to verify. Adding it here only reserves it;
+  // it serves nothing until ownership and routing both check out.
   const existing = await users.getByDomain(domain)
   if (existing && existing.id !== req.user.id) {
     return res.status(409).json({ error: 'That domain is already verified on another account' })
   }
 
-  const token = domainVerificationToken(req.user.id, domain)
-  req.user.domains.push({ domain, status: 'pending', addedAt: Date.now() })
+  const entry = {
+    domain,
+    status: 'pending_dns',
+    addedAt: Date.now(),
+    isDefault: !req.user.domains.length,
+  }
+  req.user.domains.push(entry)
   await users.update(req.user)
 
   await audit({
@@ -685,60 +975,93 @@ app.post('/api/domains', requireUser, async (req, res) => {
     targetId: domain,
     meta: { owner: req.user.id },
   })
-  res.json({ domains: req.user.domains, token, dns: domainInstructions(domain, token) })
+  res.json({ domain: domainView(req.user, entry) })
 })
 
 /**
- * Check the TXT record and, if it matches, start serving links on this host.
- * Uses DNS directly rather than trusting anything the client says.
+ * Check a domain and say exactly what is still missing.
+ *
+ * Everything is measured, never taken from the client: DNS is read from DNS,
+ * and certificate state from the platform. A domain starts serving as soon as
+ * ownership and routing are both good; if the certificate is still being
+ * issued, it goes live the moment that lands rather than needing another click.
  */
 app.post('/api/domains/:domain/verify', requireUser, async (req, res) => {
-  if (!CUSTOM_DOMAINS_LIVE) return res.status(503).json({ error: 'Custom domains are not switched on', unavailable: true })
+  if (!CUSTOM_DOMAINS_LIVE) return res.status(503).json({ error: 'Custom domains are switched off', unavailable: true })
 
   const domain = String(req.params.domain || '').toLowerCase()
   const entry = (req.user.domains || []).find((d) => d.domain === domain)
   if (!entry) return res.status(404).json({ error: 'Not found' })
 
-  const expected = domainVerificationToken(req.user.id, domain)
-  let records = []
-  try {
-    records = await dnsResolveTxt(`_ashrt.${domain}`)
-  } catch {
-    return res.status(400).json({
-      error: 'No TXT record found at _ashrt.' + domain + '. DNS changes can take a few minutes to propagate.',
-      dns: domainInstructions(domain, expected),
-    })
+  const result = await diagnoseDomain({ domain, userId: req.user.id })
+
+  if (LIVE_DOMAIN_STATES.has(result.state)) {
+    const claim = await users.claimDomain(domain, req.user.id)
+    if (!claim.ok) return res.status(409).json({ error: 'That domain is already verified on another account' })
+    if (!entry.verifiedAt) {
+      entry.verifiedAt = Date.now()
+      await audit({ actor: req.user, action: 'domain.verified', targetType: 'domain', targetId: domain })
+    }
+  } else if (entry.verifiedAt) {
+    // It used to work and no longer does. Stop serving it rather than leaving a
+    // host pointed at us that its owner may have moved on from.
+    await users.releaseDomain(domain)
+    entry.verifiedAt = null
   }
 
-  const flat = records.map((r) => (Array.isArray(r) ? r.join('') : String(r)).trim())
-  if (!flat.includes(expected)) {
-    return res.status(400).json({
-      error: 'The TXT record does not match. Check the value and try again.',
-      found: flat.slice(0, 5),
-      dns: domainInstructions(domain, expected),
-    })
-  }
-
-  const claim = await users.claimDomain(domain, req.user.id)
-  if (!claim.ok) return res.status(409).json({ error: 'That domain is already verified on another account' })
-
-  entry.status = 'verified'
-  entry.verifiedAt = Date.now()
+  entry.status = result.state
+  entry.message = result.message
+  entry.checks = result.checks
+  entry.lastCheckedAt = Date.now()
   await users.update(req.user)
   clearDomainCache(domain)
 
-  await audit({ actor: req.user, action: 'domain.verified', targetType: 'domain', targetId: domain })
-  res.json({ ok: true, domains: req.user.domains })
+  res.json({ domain: domainView(req.user, entry), ...result })
+})
+
+/**
+ * Per-domain settings: which domain new links use, where the bare host goes,
+ * and where an unknown short code goes.
+ *
+ * The last two exist because a branded host with no configuration shows our
+ * 404 on somebody else's domain, which is a worse experience than sending the
+ * visitor to the site the domain belongs to.
+ */
+app.patch('/api/domains/:domain', requireUser, async (req, res) => {
+  const domain = String(req.params.domain || '').toLowerCase()
+  const list = req.user.domains || []
+  const entry = list.find((d) => d.domain === domain)
+  if (!entry) return res.status(404).json({ error: 'Not found' })
+
+  if (req.body?.isDefault === true) {
+    for (const d of list) d.isDefault = d.domain === domain
+  }
+
+  for (const field of ['rootRedirect', 'notFoundRedirect']) {
+    if (!(field in (req.body || {}))) continue
+    const checked = await validateDomainTarget(req.body[field])
+    if (!checked.ok) return res.status(400).json({ error: checked.error })
+    entry[field] = checked.url
+  }
+
+  await users.update(req.user)
+  clearDomainCache(domain)
+  res.json({ domain: domainView(req.user, entry) })
 })
 
 app.delete('/api/domains/:domain', requireUser, async (req, res) => {
   const domain = String(req.params.domain || '').toLowerCase()
   const owned = (req.user.domains || []).some((d) => d.domain === domain)
+  const wasDefault = (req.user.domains || []).find((d) => d.domain === domain)?.isDefault
   req.user.domains = (req.user.domains || []).filter((d) => d.domain !== domain)
+  // Removing the default should not leave an account with none.
+  if (wasDefault && req.user.domains.length) req.user.domains[0].isDefault = true
   await users.update(req.user)
   if (owned) {
     await users.releaseDomain(domain)
     clearDomainCache(domain)
+    // Detaching is best-effort: the domain is already not serving this account.
+    detachDomain(domain).catch(() => {})
     await audit({ actor: req.user, action: 'domain.removed', targetType: 'domain', targetId: domain })
   }
   res.json({ ok: true })
@@ -875,7 +1198,7 @@ app.get('/api/config', (_req, res) =>
  * should not sit behind a signup. What guests do not get is an unlimited,
  * permanent, aliasable link, and every creation passes the same validation.
  */
-app.post('/api/links', async (req, res) => {
+app.post('/api/links', requireScope('links:write'), async (req, res) => {
   const user = req.user || null
   const guest = user ? null : guestId(req, res)
 
@@ -901,11 +1224,14 @@ app.post('/api/links', async (req, res) => {
     return res.status(401).json({ error: 'Sign up for a free account to use custom aliases', needsAccount: true })
   }
 
+  // A stored-link cap, for any plan that still sets one. No plan does today:
+  // the allowance is on creation, so published links keep working instead of
+  // having to be deleted to make room.
   if (user) {
     const cap = limitFor(user, 'links')
     if (Number.isFinite(cap) && (await store.countByOwner(user.id)) >= cap) {
       return res.status(402).json({
-        error: `Free accounts can keep ${cap} links. Upgrade for unlimited.`,
+        error: `This plan keeps ${cap} links. Upgrade for more.`,
         needsUpgrade: true,
       })
     }
@@ -913,7 +1239,7 @@ app.post('/api/links', async (req, res) => {
 
   // The request is good and will produce a link, so now spend the budget.
   const budget = user
-    ? [['create:user:hour', user.id]]
+    ? [['create:user:month', user.id], ['create:user:hour', user.id]]
     : [
         ['create:guest:hour', guest],
         ['create:guest:day', guest],
@@ -922,14 +1248,25 @@ app.post('/api/links', async (req, res) => {
       ]
   for (const [name, id] of budget) {
     const r = await hit(name, id, { user })
-    if (!r.allowed) {
-      return tooMany(
-        user
-          ? 'You are creating links very quickly. Try again shortly.'
-          : 'Guest link limit reached. Create a free account to keep going, it takes a moment.',
-        r,
-      )
+    if (r.allowed) continue
+
+    // Running out of plan allowance is a different thing from going too fast,
+    // and telling someone to "try again shortly" when they need a bigger plan
+    // wastes their afternoon.
+    if (name === 'create:user:month') {
+      return res.status(402).json({
+        error: `You have created ${r.limit} links in the last 30 days, which is this plan's allowance. Upgrade to keep going.`,
+        needsUpgrade: true,
+        limit: r.limit,
+        resetAt: r.resetAt,
+      })
     }
+    return tooMany(
+      user
+        ? 'You are creating links very quickly. Try again shortly.'
+        : 'Guest link limit reached. Create a free account to keep going, it takes a moment.',
+      r,
+    )
   }
 
   let slug = String(req.body?.alias || '').trim()
@@ -996,7 +1333,183 @@ app.post('/api/links', async (req, res) => {
   res.json(out)
 })
 
-app.get('/api/links', requireUser, async (req, res) => {
+/**
+ * Create many links at once.
+ *
+ * Two things make this different from a loop over the single-link endpoint.
+ *
+ * First, it checks the whole batch before it writes anything, and reports what
+ * is wrong per row. Importing 200 links and being told only that row 87 failed,
+ * after 86 of them already exist, is how people end up with half-imported
+ * campaigns they then have to clean up by hand.
+ *
+ * Second, it stops cleanly at the plan allowance rather than partway through a
+ * row: everything past the limit comes back marked, so it can be re-run after
+ * an upgrade without creating anything twice.
+ */
+const MAX_BULK_ROWS = 250
+
+app.post('/api/links/bulk', requireUser, requireScope('links:write'), async (req, res) => {
+  const deny = requireFeature(req.user, 'bulkCreate', 'Bulk creation')
+  if (deny) return res.status(deny.status).json(deny.body)
+
+  const rows = Array.isArray(req.body?.rows) ? req.body.rows : null
+  if (!rows) return res.status(400).json({ error: 'Send a list of rows.' })
+  if (!rows.length) return res.status(400).json({ error: 'There is nothing in that file.' })
+  if (rows.length > MAX_BULK_ROWS) {
+    return res.status(400).json({ error: `That is ${rows.length} rows. Import at most ${MAX_BULK_ROWS} at a time.` })
+  }
+
+  const dryRun = Boolean(req.body?.dryRun)
+  const blocked = await blockedDomains()
+  const results = []
+  const seenAlias = new Set()
+  const seenUrl = new Set()
+
+  // Pass one: judge every row without writing anything.
+  for (const [i, raw] of rows.entries()) {
+    const row = { line: i + 1, url: String(raw?.url || '').trim() }
+    const fail = (status, message) => results.push({ ...row, ok: false, status, error: message })
+
+    if (!row.url) {
+      fail('empty', 'No URL on this row')
+      continue
+    }
+
+    const checked = validateUrl(row.url, { blocked, selfHost: SELF_HOST })
+    if (!checked.ok) {
+      fail('invalid', checked.error)
+      continue
+    }
+
+    let url = checked.url
+    if (raw?.utm && typeof raw.utm === 'object') url = applyUtm(url, raw.utm)
+
+    // A file that lists the same destination twice is usually a mistake, but it
+    // is a legitimate one (two campaigns, one page), so it is a warning rather
+    // than a refusal.
+    const duplicate = seenUrl.has(url)
+    seenUrl.add(url)
+
+    const alias = String(raw?.alias || '').trim()
+    if (alias) {
+      if (!/^[a-zA-Z0-9_-]{2,32}$/.test(alias)) {
+        fail('bad_alias', 'Aliases use letters, numbers and dashes, 2 to 32 characters')
+        continue
+      }
+      if (seenAlias.has(alias.toLowerCase())) {
+        fail('alias_repeated', 'That short code appears twice in this file')
+        continue
+      }
+      if (RESERVED.has(alias.toLowerCase()) || (await store.exists(alias))) {
+        fail('alias_taken', 'That short code is already in use')
+        continue
+      }
+      seenAlias.add(alias.toLowerCase())
+    }
+
+    results.push({
+      ...row,
+      ok: true,
+      status: duplicate ? 'duplicate' : 'ready',
+      url,
+      alias: alias || null,
+      title: String(raw?.title || '').trim().slice(0, 200) || null,
+      campaign: raw?.campaign || null,
+      tags: Array.isArray(raw?.tags) ? raw.tags.slice(0, 10).map((t) => String(t).slice(0, 40)) : [],
+      score: suspicionScore(url, checked.host).score,
+      signals: suspicionScore(url, checked.host).signals,
+    })
+  }
+
+  const ready = results.filter((r) => r.ok)
+  if (dryRun) {
+    return res.json({
+      dryRun: true,
+      total: results.length,
+      ready: ready.length,
+      rejected: results.length - ready.length,
+      rows: results.map(({ score, signals, ...rest }) => rest),
+    })
+  }
+
+  // Pass two: write, spending the plan allowance one link at a time so the
+  // batch stops exactly at the limit.
+  for (const row of ready) {
+    const budget = await hit('create:user:month', req.user.id, { user: req.user })
+    if (!budget.allowed) {
+      row.ok = false
+      row.status = 'over_quota'
+      row.error = 'This would go past your plan allowance for the last 30 days'
+      continue
+    }
+
+    let slug = row.alias
+    if (!slug) {
+      let attempts = 0
+      do {
+        slug = randomSlug()
+        if (++attempts > 10) {
+          row.ok = false
+          row.status = 'failed'
+          row.error = 'Could not allocate a short code'
+          break
+        }
+      } while (RESERVED.has(slug.toLowerCase()) || (await store.exists(slug)))
+    }
+    if (!row.ok) continue
+
+    const flagged = row.score >= AUTO_FLAG_SCORE
+    const link = await store.add({
+      slug,
+      url: row.url,
+      owner: req.user.id,
+      guest: false,
+      title: row.title,
+      campaign: row.campaign,
+      tags: row.tags,
+      status: flagged ? 'flagged' : 'active',
+      flagScore: row.score,
+      flagSignals: row.signals,
+      creatorIpHash: hashClient(clientIp(req)),
+      source: 'bulk',
+    })
+
+    row.status = flagged ? 'flagged' : 'created'
+    row.slug = slug
+    row.shortUrl = shortUrlFor(slug, req.user)
+    if (flagged) {
+      await audit({
+        actor: null,
+        action: 'link.auto_flagged',
+        targetType: 'link',
+        targetId: slug,
+        meta: { score: row.score, signals: row.signals, source: 'bulk' },
+      })
+    }
+    void link
+  }
+
+  const created = results.filter((r) => r.ok && r.slug)
+  if (created.length) {
+    await store.logActivity(req.user.id, {
+      type: 'created',
+      slug: created[0].slug,
+      count: created.length,
+      at: Date.now(),
+    })
+    trackAsync('bulk_links_created')
+  }
+
+  res.json({
+    total: results.length,
+    created: created.length,
+    rejected: results.length - created.length,
+    rows: results.map(({ score, signals, ...rest }) => rest),
+  })
+})
+
+app.get('/api/links', requireUser, requireScope('links:read'), async (req, res) => {
   const all = await store.byOwner(req.user.id)
   const q = String(req.query.q || '').trim().toLowerCase()
   const status = String(req.query.status || '').trim()
@@ -1029,7 +1542,7 @@ app.get('/api/links', requireUser, async (req, res) => {
   })
 })
 
-app.patch('/api/links/:slug', requireUser, async (req, res) => {
+app.patch('/api/links/:slug', requireUser, requireScope('links:write'), async (req, res) => {
   const link = await store.get(req.params.slug)
   if (!link) return res.status(404).json({ error: 'Link not found' })
   if (link.owner !== req.user.id) return res.status(403).json({ error: 'Not your link' })
@@ -1037,6 +1550,7 @@ app.patch('/api/links/:slug', requireUser, async (req, res) => {
   if (req.body?.url !== undefined) {
     const built = await buildLinkPayload(req, { user: req.user })
     if (built.error) return res.status(built.error.status).json(built.error.body)
+    if (built.url !== link.url) recordDestinationChange(link, built.url, req.user.email)
     link.url = built.url
     link.flagScore = built.score
     link.flagSignals = built.signals
@@ -1046,6 +1560,26 @@ app.patch('/api/links/:slug', requireUser, async (req, res) => {
   if (req.body?.tags !== undefined && Array.isArray(req.body.tags)) {
     link.tags = req.body.tags.slice(0, 10).map((t) => String(t).slice(0, 40))
   }
+  if (req.body?.rules !== undefined) {
+    const deny = requireFeature(req.user, 'smartRouting', 'Smart routing')
+    if (deny) return res.status(deny.status).json(deny.body)
+
+    const { rules, errors } = sanitizeRules(req.body.rules)
+    if (errors.length) return res.status(400).json({ error: errors[0], errors })
+
+    // Every rule destination goes through the same validation as the link's
+    // own, against the live blocklist. Without this the rule editor would be an
+    // open redirect with a form in front of it.
+    const blocked = await blockedDomains()
+    const checked = []
+    for (const [i, rule] of rules.entries()) {
+      const result = validateUrl(rule.url, { blocked })
+      if (!result.ok) return res.status(400).json({ error: `Rule ${i + 1}: ${result.error}` })
+      checked.push({ ...rule, url: result.url })
+    }
+    link.rules = checked
+  }
+
   if (req.body?.expiresAt !== undefined) {
     const deny = requireFeature(req.user, 'expiry', 'Link expiry')
     if (deny) return res.status(deny.status).json(deny.body)
@@ -1061,7 +1595,36 @@ app.patch('/api/links/:slug', requireUser, async (req, res) => {
   res.json(publicLink(link, { user: req.user }))
 })
 
-app.get('/api/links/:slug/stats', requireUser, async (req, res) => {
+/**
+ * Put a link back to a destination it used to have.
+ *
+ * The old URL is validated again rather than trusted: a domain that was fine
+ * six weeks ago may be on the blocklist now, and "it was allowed before" is not
+ * a reason to serve it today. Reverting is itself a change, so it is recorded
+ * in the history like any other.
+ */
+app.post('/api/links/:slug/revert', requireUser, requireScope('links:write'), async (req, res) => {
+  const link = await store.get(req.params.slug)
+  if (!link) return res.status(404).json({ error: 'Link not found' })
+  if (link.owner !== req.user.id) return res.status(403).json({ error: 'Not your link' })
+
+  const at = Number(req.body?.changedAt)
+  const entry = (link.history || []).find((h) => h.changedAt === at)
+  if (!entry) return res.status(404).json({ error: 'That version is no longer in the history' })
+
+  const checked = validateUrl(entry.url, { blocked: await blockedDomains() })
+  if (!checked.ok) {
+    return res.status(400).json({ error: `That destination can no longer be used: ${checked.error}` })
+  }
+
+  recordDestinationChange(link, checked.url, req.user.email)
+  link.url = checked.url
+  await store.add(link)
+  await store.logActivity(req.user.id, { type: 'edited', slug: link.slug, at: Date.now() })
+  res.json(publicLink(link, { user: req.user }))
+})
+
+app.get('/api/links/:slug/stats', requireUser, requireScope('analytics:read'), async (req, res) => {
   const link = await store.get(req.params.slug)
   if (!link) return res.status(404).json({ error: 'Link not found' })
   if (link.owner !== req.user.id) return res.status(403).json({ error: 'Not your link' })
@@ -1069,7 +1632,7 @@ app.get('/api/links/:slug/stats', requireUser, async (req, res) => {
   res.json({ ...summary, shortUrl: shortUrlFor(req.params.slug, req.user) })
 })
 
-app.delete('/api/links/:slug', requireUser, async (req, res) => {
+app.delete('/api/links/:slug', requireUser, requireScope('links:write'), async (req, res) => {
   const link = await store.get(req.params.slug)
   if (!link) return res.json({ ok: true })
   if (link.owner !== req.user.id) return res.status(403).json({ error: 'Not your link' })
@@ -1078,44 +1641,371 @@ app.delete('/api/links/:slug', requireUser, async (req, res) => {
   res.json({ ok: true })
 })
 
-app.get('/api/stats', requireUser, async (req, res) => {
+app.get('/api/stats', requireUser, requireScope('analytics:read'), async (req, res) => {
   const summary = await store.summary(req.user.id)
   const camps = await campaigns.byOwner(req.user.id)
   res.json({ ...summary, totalCampaigns: camps.length })
 })
 
+/* --------------------------------- export --------------------------------- */
+
+/**
+ * CSV, because a spreadsheet is where this data usually ends up.
+ *
+ * Three shapes rather than one flat dump: the link list, clicks per link per
+ * day, and campaign totals. There is no per-click export because there are no
+ * per-click rows: clicks are aggregated as they arrive, which is what keeps
+ * this cheap to run and keeps us from holding a log of who went where.
+ */
+const CSV_TYPES = ['links', 'daily', 'campaigns']
+
+/** One CSV field, quoted when it has to be. */
+function csvCell(value) {
+  const text = value === null || value === undefined ? '' : String(value)
+  // A leading =, +, - or @ is executed as a formula by spreadsheet software,
+  // so a destination like "=cmd|..." is neutralised rather than passed along.
+  const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text
+  return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe
+}
+
+const csvRows = (rows) => rows.map((r) => r.map(csvCell).join(',')).join('\r\n') + '\r\n'
+
+app.get('/api/export', requireUser, requireScope('analytics:read'), limit('export:hour', (req) => req.user?.id || clientId(req)), async (req, res) => {
+  const type = CSV_TYPES.includes(String(req.query.type)) ? String(req.query.type) : 'links'
+  const links = await store.byOwner(req.user.id)
+  const stamp = new Date().toISOString().slice(0, 10)
+
+  let rows
+  if (type === 'links') {
+    const uniques = await store.uniquesForLinks(links.map((l) => l.slug))
+    rows = [
+      ['short_code', 'short_url', 'destination', 'name', 'campaign', 'tags', 'status',
+       'clicks', 'unique_visitors', 'bot_clicks', 'created_at', 'last_click_at'],
+      ...links.map((l) => [
+        l.slug,
+        shortUrlFor(l.slug, req.user),
+        l.url,
+        l.title || '',
+        l.campaign || '',
+        (l.tags || []).join(' '),
+        effectiveStatus(l),
+        l.clicks || 0,
+        uniques[l.slug] || 0,
+        l.botClicks || 0,
+        l.createdAt ? new Date(l.createdAt).toISOString() : '',
+        l.lastClickAt ? new Date(l.lastClickAt).toISOString() : '',
+      ]),
+    ]
+  } else if (type === 'daily') {
+    rows = [['date', 'short_code', 'destination', 'clicks', 'bot_clicks']]
+    for (const l of links) {
+      const days = new Set([...Object.keys(l.daily || {}), ...Object.keys(l.botDaily || {})])
+      for (const day of [...days].sort()) {
+        rows.push([day, l.slug, l.url, (l.daily || {})[day] || 0, (l.botDaily || {})[day] || 0])
+      }
+    }
+  } else {
+    const camps = await campaigns.byOwner(req.user.id)
+    const uniques = await store.uniquesForLinks(links.map((l) => l.slug))
+    rows = [['campaign', 'links', 'clicks', 'unique_visitors', 'bot_clicks', 'created_at']]
+    for (const c of camps) {
+      const mine = links.filter((l) => l.campaign === c.id)
+      rows.push([
+        c.name,
+        mine.length,
+        mine.reduce((s, l) => s + (l.clicks || 0), 0),
+        mine.reduce((s, l) => s + (uniques[l.slug] || 0), 0),
+        mine.reduce((s, l) => s + (l.botClicks || 0), 0),
+        c.createdAt ? new Date(c.createdAt).toISOString() : '',
+      ])
+    }
+    const loose = links.filter((l) => !l.campaign)
+    if (loose.length) {
+      rows.push([
+        'No campaign',
+        loose.length,
+        loose.reduce((s, l) => s + (l.clicks || 0), 0),
+        loose.reduce((s, l) => s + (uniques[l.slug] || 0), 0),
+        loose.reduce((s, l) => s + (l.botClicks || 0), 0),
+        '',
+      ])
+    }
+  }
+
+  res
+    .type('text/csv; charset=utf-8')
+    .set('Content-Disposition', `attachment; filename="ashrt-${type}-${stamp}.csv"`)
+    .set('Cache-Control', 'no-store')
+    .send(csvRows(rows))
+})
+
+/* ---------------------------- destination health -------------------------- */
+
+/**
+ * Check a slice of destinations.
+ *
+ * Called by the scheduler, never by a browser, and never from the redirect
+ * path. Vercel Cron sends `Authorization: Bearer $CRON_SECRET`; without a
+ * secret configured the endpoint refuses everyone, because an open endpoint
+ * that makes outbound requests on demand is a free proxy for whoever finds it.
+ */
+app.get('/api/cron/health-check', async (req, res) => {
+  const secret = process.env.CRON_SECRET
+  if (!secret) return res.status(503).json({ error: 'Checks are not configured on this deployment.' })
+
+  const provided = (req.get('authorization') || '').replace(/^Bearer\s+/i, '')
+  // Timing-safe, because this is a bearer token and the comparison is remote.
+  const ok =
+    provided.length === secret.length &&
+    crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(secret))
+  if (!ok) return res.status(404).type('html').send(notFoundPage())
+
+  const limitN = Math.min(Math.max(Number(req.query.limit) || 40, 1), 100)
+  const all = await store.all()
+  const due = dueLinks(all, { limit: limitN })
+  if (!due.length) return res.json({ checked: 0, broken: 0, note: 'Nothing due.' })
+
+  const blocked = await blockedDomains()
+  const summary = { checked: 0, ok: 0, broken: 0, recovered: 0, byStatus: {} }
+
+  // A few at a time: enough to get through the queue, not enough to look like
+  // an attack to anybody receiving them.
+  const BATCH = 6
+  for (let i = 0; i < due.length; i += BATCH) {
+    const slice = due.slice(i, i + BATCH)
+    const results = await Promise.all(
+      slice.map(async (link) => ({ link, result: await checkUrl(link.url, { blocked }) })),
+    )
+
+    for (const { link, result } of results) {
+      const before = link.health?.alerting || false
+      const fresh = await store.get(link.slug)
+      // The link may have been edited or deleted while the batch was running;
+      // writing a check for a destination that is no longer there would be
+      // worse than skipping it.
+      if (!fresh || fresh.url !== link.url) continue
+
+      fresh.health = applyResult(fresh, result)
+      await store.add(fresh)
+
+      summary.checked++
+      summary.byStatus[result.status] = (summary.byStatus[result.status] || 0) + 1
+      if (result.status === 'ok') {
+        summary.ok++
+        if (before) summary.recovered++
+      } else if (fresh.health.alerting) {
+        summary.broken++
+      }
+    }
+  }
+
+  res.json(summary)
+})
+
+/**
+ * The links this account should look at.
+ *
+ * Reported separately from the link list so the dashboard can ask for just this
+ * without paging through everything.
+ */
+app.get('/api/links/health', requireUser, requireScope('analytics:read'), async (req, res) => {
+  const links = await store.byOwner(req.user.id)
+  const broken = links.filter(isBroken)
+  const checked = links.filter((l) => l.health?.checkedAt)
+
+  res.json({
+    // Checks run on a schedule, so "none broken" and "nothing checked yet" are
+    // different answers and are reported as such.
+    checking: checked.length > 0,
+    lastCheckedAt: checked.reduce((max, l) => Math.max(max, l.health.checkedAt), 0) || null,
+    broken: broken.map((l) => ({
+      slug: l.slug,
+      url: l.url,
+      title: l.title,
+      status: l.health.status,
+      label: HEALTH_STATES[l.health.status] || l.health.status,
+      code: l.health.code,
+      detail: l.health.detail,
+      failingSince: l.health.failingSince,
+      lastOkAt: l.health.lastOkAt,
+      clicks: l.clicks || 0,
+      recentClicks: recentClicks(l),
+    })),
+  })
+})
+
 /* ------------------------------- QR codes --------------------------------- */
 
 /**
- * QR codes. Signed-in users can encode anything; guests can encode only one of
- * our own short URLs, so the endpoint stays useful on the guest tracking page
- * without becoming a free general-purpose QR API for anyone to point a script at.
+ * QR codes.
+ *
+ * Every code encodes the short link, never the destination, which is what makes
+ * it editable after it is printed. Codes we generate for our own links carry an
+ * `s=qr` marker so a scan can be told apart from a click; the marker is read at
+ * the redirect and never forwarded on.
+ *
+ * Signed-in users can encode anything; guests can encode only one of our own
+ * short URLs, so the endpoint stays useful on the guest tracking page without
+ * becoming a free general-purpose QR API for anyone to point a script at.
  */
-app.get('/api/qr', limit('redirect:minute'), async (req, res) => {
-  const data = String(req.query.data || '').slice(0, 2048)
+
+/** Defaults for an account that has not chosen anything. */
+const QR_DEFAULTS = {
+  dark: '#0A0A0A',
+  light: '#FFFFFF',
+  style: 'square',
+  eyeStyle: 'square',
+  ecLevel: 'M',
+  caption: '',
+  frame: false,
+  logo: null,
+}
+
+/**
+ * The style this account's codes use.
+ *
+ * Styling is a paid feature, so a free account always renders the plain code
+ * rather than a half-styled one: server-side, not by hiding the controls.
+ */
+function qrStyleFor(user) {
+  if (!can(user, 'brandedQr')) return { ...QR_DEFAULTS }
+  return { ...QR_DEFAULTS, ...(user?.qr || {}) }
+}
+
+/** Is this one of our own short URLs? */
+function ownShortUrl(text, user) {
+  const hosts = [BASE_URL, ...(user?.domains || []).map((d) => `https://${d.domain}`)]
+  for (const base of hosts) {
+    if (!text.startsWith(base + '/')) continue
+    const rest = text.slice(base.length + 1)
+    if (/^[a-zA-Z0-9_-]{1,32}$/.test(rest)) return rest
+  }
+  return null
+}
+
+app.get('/api/qr', requireScope('qr:read'), limit('redirect:minute'), async (req, res) => {
+  let data = String(req.query.data || '').slice(0, 2048)
+
+  // Addressing a link by its short code is the normal case, and it means the
+  // caller never has to know how the short URL is built.
+  if (!data && req.query.slug) {
+    const slug = String(req.query.slug).slice(0, 32)
+    const link = await store.get(slug)
+    if (!link) return res.status(404).send('no such link')
+    if (link.owner && link.owner !== req.user?.id) return res.status(404).send('no such link')
+    data = shortUrlFor(slug, req.user)
+  }
   if (!data) return res.status(400).send('missing data')
 
-  if (!req.user) {
-    const ours = data.startsWith(`${BASE_URL}/`) && /^[a-zA-Z0-9_-]{1,32}$/.test(data.slice(BASE_URL.length + 1))
-    if (!ours) return res.status(401).send('sign in to generate QR codes')
+  const ours = ownShortUrl(data, req.user)
+  if (!req.user && !ours) return res.status(401).send('sign in to generate QR codes')
+
+  // Mark our own codes so a scan can be counted as a scan. Anything the caller
+  // already put on the URL is left alone.
+  if (ours && !data.includes('?')) data += '?s=qr'
+
+  const style = qrStyleFor(req.user)
+
+  // Per-request overrides, so the editor can preview a style before it is
+  // saved. Entitlement is still what decides: an account without it gets the
+  // plain code whatever it puts in the query string. The logo is not overridable
+  // here because it lives on the account, not in a URL.
+  if (can(req.user, 'brandedQr')) {
+    const hex = (v) => (/^#?[0-9a-fA-F]{6}$/.test(String(v || '')) ? '#' + String(v).replace('#', '') : null)
+    const q = req.query
+    if (hex(q.color)) style.dark = hex(q.color)
+    if (hex(q.bg)) style.light = hex(q.bg)
+    if (q.bg === 'transparent') style.light = 'transparent'
+    if (QR_MODULE_STYLES.includes(q.style)) style.style = q.style
+    if (QR_EYE_STYLES.includes(q.eyes)) style.eyeStyle = q.eyes
+    if (QR_EC_LEVELS.includes(q.ec)) style.ecLevel = q.ec
+    if (q.caption !== undefined) style.caption = String(q.caption).replace(/[<>]/g, '').slice(0, 40)
+    if (q.frame !== undefined) style.frame = q.frame === '1' || q.frame === 'true'
   }
 
-  const wantColor = String(req.query.color || '').replace('#', '')
-  const dark = can(req.user, 'brandedQr') && /^[0-9a-fA-F]{6}$/.test(wantColor) ? `#${wantColor}` : '#0A0A0A'
-  const opts = { margin: 1, color: { dark, light: '#FFFFFF' } }
   const name = String(req.query.name || 'qr').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 60) || 'qr'
+  const size = Math.min(Math.max(Number(req.query.size) || 512, 96), 2048)
+
   try {
+    // PNG stays for API callers and anything that cannot render SVG. It is the
+    // plain code: styling, logos and captions are drawn in SVG, which the
+    // browser turns into a PNG at whatever resolution the person asks for.
     if (req.query.format === 'png') {
-      const buf = await QRCode.toBuffer(data, { ...opts, type: 'png', width: 512 })
+      const buf = await QRCode.toBuffer(data, {
+        margin: 1,
+        color: { dark: style.dark, light: style.light === 'transparent' ? '#FFFFFF' : style.light },
+        type: 'png',
+        width: size,
+      })
       if (req.query.download) res.set('Content-Disposition', `attachment; filename="${name}.png"`)
       return res.type('image/png').send(buf)
     }
-    const svg = await QRCode.toString(data, { ...opts, type: 'svg' })
+
+    const svg = renderQrSvg(data, { ...style, size })
     if (req.query.download) res.set('Content-Disposition', `attachment; filename="${name}.svg"`)
     res.type('image/svg+xml').send(svg)
   } catch {
     res.status(500).send('qr error')
   }
+})
+
+/**
+ * The account's saved QR style.
+ *
+ * One style per account rather than one per code: people want their codes to
+ * look like each other, and it keeps a logo out of every link record.
+ */
+app.get('/api/qr/style', requireUser, (req, res) => {
+  res.json({
+    style: qrStyleFor(req.user),
+    entitled: can(req.user, 'brandedQr'),
+    options: { modules: QR_MODULE_STYLES, eyes: QR_EYE_STYLES, ecLevels: QR_EC_LEVELS },
+    maxLogoBytes: MAX_QR_LOGO_BYTES,
+  })
+})
+
+/** A logo has to be small: it is stored on the account and sent with every code. */
+const MAX_QR_LOGO_BYTES = 48 * 1024
+
+app.patch('/api/qr/style', requireUser, async (req, res) => {
+  const deny = requireFeature(req.user, 'brandedQr', 'QR customisation')
+  if (deny) return res.status(deny.status).json(deny.body)
+
+  const body = req.body || {}
+  const next = { ...qrStyleFor(req.user) }
+
+  const hex = (v) => (/^#?[0-9a-fA-F]{6}$/.test(String(v || '')) ? '#' + String(v).replace('#', '') : null)
+  if (body.dark !== undefined) next.dark = hex(body.dark) || QR_DEFAULTS.dark
+  if (body.light !== undefined) {
+    next.light = body.light === 'transparent' ? 'transparent' : hex(body.light) || QR_DEFAULTS.light
+  }
+  if (body.style !== undefined) next.style = QR_MODULE_STYLES.includes(body.style) ? body.style : 'square'
+  if (body.eyeStyle !== undefined) next.eyeStyle = QR_EYE_STYLES.includes(body.eyeStyle) ? body.eyeStyle : 'square'
+  if (body.ecLevel !== undefined) next.ecLevel = QR_EC_LEVELS.includes(body.ecLevel) ? body.ecLevel : 'M'
+  if (body.caption !== undefined) next.caption = String(body.caption).replace(/[<>]/g, '').trim().slice(0, 40)
+  if (body.frame !== undefined) next.frame = Boolean(body.frame)
+
+  if (body.logo !== undefined) {
+    if (!body.logo) {
+      next.logo = null
+    } else {
+      const logo = String(body.logo)
+      // Only a real image data URI, and only a small one. An SVG logo can carry
+      // script, so it is not accepted: it would be served back inside our own
+      // SVG and rendered on our own origin.
+      if (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(logo)) {
+        return res.status(400).json({ error: 'Upload a PNG, JPEG or WebP image.' })
+      }
+      if (logo.length > MAX_QR_LOGO_BYTES) {
+        return res.status(413).json({ error: `That image is too large. Keep it under ${Math.round(MAX_QR_LOGO_BYTES / 1024)}KB.` })
+      }
+      next.logo = logo
+    }
+  }
+
+  req.user.qr = next
+  await users.update(req.user)
+  res.json({ style: next })
 })
 
 /* ============================== guest links =============================== */
@@ -1277,6 +2167,26 @@ app.get('/api/admin/overview', async (req, res) => {
   const day = new Date().toISOString().slice(0, 10)
   const totalClicks = Object.values(clicksByDay).reduce((s, n) => s + n, 0)
 
+  // Domains a customer has finished their half of. Without this, someone can
+  // publish their DNS correctly and then wait indefinitely on a step only we
+  // can take, with nothing anywhere saying so.
+  // Links whose destination has failed twice in a row. Service-wide, because an
+  // outage on one popular destination usually shows up as many links at once.
+  const brokenLinks = []
+  for (const l of await store.all()) {
+    if (isBroken(l)) brokenLinks.push({ slug: l.slug, url: l.url, status: l.health.status, clicks: l.clicks || 0 })
+  }
+  brokenLinks.sort((a, b) => b.clicks - a.clicks)
+
+  const waitingDomains = []
+  for (const u of await users.all()) {
+    for (const d of u.domains || []) {
+      if (d.status === 'pending_platform' || d.status === 'error') {
+        waitingDomains.push({ domain: d.domain, email: u.email, userId: u.id, status: d.status })
+      }
+    }
+  }
+
   // Clicks over the requested window, gaps filled so the chart is continuous.
   const series = {}
   for (let i = days - 1; i >= 0; i--) {
@@ -1298,6 +2208,9 @@ app.get('/api/admin/overview', async (req, res) => {
       counted: statuses.scanned,
     },
     campaigns: campaignCount,
+    domainsWaiting: waitingDomains.slice(0, 25),
+    brokenLinks: brokenLinks.slice(0, 25),
+    brokenLinksTotal: brokenLinks.length,
     clicks: { total: totalClicks, today: clicksByDay[day] || 0, window: windowClicks },
     series,
     days,
@@ -1410,16 +2323,23 @@ app.patch('/api/admin/users/:id', async (req, res) => {
       user.apiDisabled = false
       break
     case 'revoke-key': {
-      // Rotate to a fresh key the owner can retrieve, rather than leaving the
-      // account with no way to use the API at all.
-      const oldApiKeyHash = user.apiKeyHash || (user.apiKey ? hashApiKey(user.apiKey) : null)
-      const key = newApiKey()
-      user.apiKey = key
-      user.apiKeyHash = hashApiKey(key)
-      user.apiKeyCreatedAt = Date.now()
-      await users.update(user, { oldApiKeyHash })
-      await audit({ actor: req.user, action: 'user.revoke-key', targetType: 'user', targetId: user.id, meta: { reason } })
-      return res.json({ user: adminUser(user) })
+      // Every key on the account, not one of them. This action exists for a
+      // compromised account, and leaving the other keys working would defeat
+      // it. The owner mints a new one themselves; we cannot hand them a key,
+      // because keys are shown once and we do not keep the plaintext.
+      const removedKeyHashes = keysOf(user).map((k) => k.hash)
+      user.apiKey = null
+      user.apiKeyHash = null
+      user.apiKeys = []
+      await users.update(user, { removedKeyHashes })
+      await audit({
+        actor: req.user,
+        action: 'user.revoke-key',
+        targetType: 'user',
+        targetId: user.id,
+        meta: { reason, revoked: removedKeyHashes.length },
+      })
+      return res.json({ user: adminUser(user), revoked: removedKeyHashes.length })
     }
     case 'note':
       if (!reason) return res.status(400).json({ error: 'Write something in the note' })
@@ -1741,6 +2661,65 @@ app.get('/api/admin/audit', async (req, res) => {
   })
 })
 
+/* ------------------------------ admin: health ----------------------------- */
+
+/**
+ * Storage integrity: does every index agree with the records behind it?
+ *
+ * This exists because the alternative was telling an operator to copy
+ * production database credentials onto a laptop to run a command line tool.
+ * The check itself is shared with `npm run doctor`, so both answer the same.
+ */
+app.get('/api/admin/health', async (req, res) => {
+  const who = String(req.query.user || '').trim() || null
+  const report = await checkIntegrity({ user: who })
+
+  // The fix list is an implementation detail and can be enormous. The browser
+  // needs the counts and the evidence, not the command stream.
+  const { fixes, ...rest } = report
+  res.json({
+    ...rest,
+    fixable: fixes.length,
+    accounts: rest.accounts.slice(0, 200),
+    accountsShown: Math.min(rest.accounts.length, 200),
+    zsetMissing: rest.zsetMissing.slice(0, 50),
+    zsetMissingTotal: report.zsetMissing.length,
+  })
+})
+
+/**
+ * Rebuild the indexes from the records.
+ *
+ * Deliberately narrow: it adds and removes index entries and does nothing else.
+ * No link is deleted, no destination is changed, no click count is touched, so
+ * the worst case of running it at the wrong moment is wasted writes. It still
+ * asks for confirmation and still lands in the audit log, because an operator
+ * should be able to see afterwards who ran it and what it did.
+ */
+app.post('/api/admin/health/repair', async (req, res) => {
+  if (req.body?.confirm !== 'repair') {
+    return res.status(400).json({ error: 'Send confirm: "repair" to run this.' })
+  }
+  const who = String(req.body?.user || '').trim() || null
+  const report = await checkIntegrity({ user: who })
+  if (!report.fixes.length) return res.json({ ok: true, applied: 0, attempted: 0 })
+
+  const result = await applyFixes(report.fixes)
+  await audit({
+    actor: req.user,
+    action: 'system.reindex',
+    targetType: 'system',
+    targetId: who || 'all',
+    meta: {
+      applied: result.applied,
+      attempted: result.attempted,
+      accounts: report.accounts.filter((a) => !a.healthy).length,
+      recencyGaps: report.zsetMissing.length,
+    },
+  })
+  res.json({ ok: true, ...result })
+})
+
 /* --------------------------- branded host routing ------------------------- */
 
 /**
@@ -1756,8 +2735,8 @@ app.use(async (req, res, next) => {
   const host = req.get('host')
   if (hostMatchesSelf(host)) return next()
 
-  const owner = await ownerForHost(host)
-  if (!owner) return next()
+  const brand = await ownerForHost(host)
+  if (!brand) return next()
 
   // The bare host, and any non-slug path, belong to us, not to the brand.
   //
@@ -1772,13 +2751,27 @@ app.use(async (req, res, next) => {
     // A branded host must not be indexed: its content is redirects.
     return res.type('text/plain').send('User-agent: *\nDisallow: /\n')
   }
+
+  // Somebody typed the bare domain, or followed a link to it. Sending them to
+  // our homepage on their own company's domain is the wrong answer, so the
+  // account gets to say where it goes. Unset, they land on the canonical site.
+  if (path === '/' && brand.entry.rootRedirect) {
+    res.set('Cache-Control', 'no-store')
+    return res.redirect(302, brand.entry.rootRedirect)
+  }
   return res.redirect(302, CANONICAL_URL + (path === '/' ? '' : path))
 })
 
 /* ============================ funnel measurement ========================== */
 
 /** The public pages whose traffic is the top of the funnel. */
-const LANDING_PATHS = new Set(['/utm-link-tracker', '/qr-code-tracking'])
+const LANDING_PATHS = new Set([
+  '/utm-link-tracker',
+  '/qr-code-tracking',
+  '/qr-code-generator',
+  '/bitly-alternative',
+  '/pricing',
+])
 
 /**
  * Count a view of a public page, server-side.
@@ -1827,8 +2820,11 @@ app.post('/api/events', limit('redirect:minute'), (req, res) => {
  */
 const PUBLIC_PAGES = [
   { path: '/', priority: '1.0', changefreq: 'weekly' },
+  { path: '/pricing', priority: '0.9', changefreq: 'monthly' },
   { path: '/utm-link-tracker', priority: '0.8', changefreq: 'monthly' },
   { path: '/qr-code-tracking', priority: '0.8', changefreq: 'monthly' },
+  { path: '/qr-code-generator', priority: '0.8', changefreq: 'monthly' },
+  { path: '/bitly-alternative', priority: '0.7', changefreq: 'monthly' },
   { path: '/report', priority: '0.3', changefreq: 'yearly' },
   { path: '/privacy', priority: '0.3', changefreq: 'yearly' },
   { path: '/terms', priority: '0.3', changefreq: 'yearly' },
@@ -1918,6 +2914,9 @@ function clickContext(req) {
     device,
     country,
     refHost,
+    // Our own QR codes carry ?s=qr. The marker is read here and goes no
+    // further: the destination never sees it.
+    channel: req.query?.s === 'qr' ? 'qr' : 'link',
     browser: firstMatch(BROWSERS, ua, 'Other'),
     os: firstMatch(SYSTEMS, ua, 'Other'),
     isBot: bot.isBot,
@@ -1954,18 +2953,27 @@ const interstitialPage = (link) =>
 
 app.get('/:slug', limit('redirect:minute'), async (req, res) => {
   const slug = req.params.slug
-  if (!/^[a-zA-Z0-9_-]{1,32}$/.test(slug)) return res.status(404).type('html').send(notFoundPage())
+
+  // On a branded host, an unknown code can go somewhere the account chose
+  // rather than to our 404 page on their domain.
+  const brand = await ownerForHost(req.get('host'))
+  const missing = () => {
+    if (brand?.entry?.notFoundRedirect) {
+      res.set('Cache-Control', 'no-store')
+      return res.redirect(302, brand.entry.notFoundRedirect)
+    }
+    return res.status(404).type('html').send(notFoundPage())
+  }
+
+  if (!/^[a-zA-Z0-9_-]{1,32}$/.test(slug)) return missing()
 
   const link = await store.get(slug)
-  if (!link) return res.status(404).type('html').send(notFoundPage())
+  if (!link) return missing()
 
   // On a branded host, only that account's links resolve. Without this every
   // customer's domain would serve every link on the service, so one person's
   // domain could be used to launder someone else's destination.
-  const brandOwner = await ownerForHost(req.get('host'))
-  if (brandOwner && link.owner !== brandOwner.id) {
-    return res.status(404).type('html').send(notFoundPage())
-  }
+  if (brand && link.owner !== brand.user.id) return missing()
 
   const status = effectiveStatus(link)
   if (status === 'disabled') {
@@ -1978,14 +2986,27 @@ app.get('/:slug', limit('redirect:minute'), async (req, res) => {
       .send(gonePage('Link expired', 'This guest link has expired. Create a free account to keep links permanently.'))
   }
 
+  const ctx = clickContext(req)
+
+  // Where this particular visitor goes. The rules live on the record we have
+  // already read, so this is a loop over a short array rather than a lookup.
+  const routed = resolveDestination(link, ctx)
+  ctx.ruleId = routed.rule?.id || 'default'
+
   // Re-check the destination against the blocklist on every redirect, so
-  // blocking a domain immediately kills links that already point at it.
-  const safe = checkStored(link.url, { blocked: await blockedDomains() })
+  // blocking a domain immediately kills links that already point at it. A rule
+  // destination is checked exactly like the link's own.
+  const blocked = await blockedDomains()
+  let safe = checkStored(routed.url, { blocked })
+  if (!safe.ok && routed.rule) {
+    // A blocked rule destination must not take the whole link down with it:
+    // fall back to the link's own destination, which is checked in its turn.
+    ctx.ruleId = 'default'
+    safe = checkStored(link.url, { blocked })
+  }
   if (!safe.ok) {
     return res.status(410).type('html').send(gonePage('Link disabled', safe.error))
   }
-
-  const ctx = clickContext(req)
 
   if (status === 'flagged') {
     // Record the visit, then warn rather than forward silently.

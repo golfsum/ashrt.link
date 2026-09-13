@@ -163,7 +163,7 @@ test('claiming guest links at signup is counted', async () => {
 
 test('an API-key link is distinguished from a dashboard link', async () => {
   const { cookie } = await signup()
-  const key = (await request(app).get('/api/account').set('Cookie', cookie)).body.user.apiKey
+  const key = (await request(app).post('/api/keys').set('Cookie', cookie).send({ name: 'Events' })).body.key
   const before = (await totals()).api_link_created || 0
   await request(app).post('/api/links').set('x-api-key', key).send({ url: 'example.com/api-ev' })
   const after = (await totals()).api_link_created || 0

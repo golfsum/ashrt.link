@@ -63,6 +63,9 @@ async function create(e) {
 
   setErr('')
   $('go').disabled = true
+  // Each page words its own button ("Make the QR code", "Create a tracking
+  // link"). Remember it rather than putting one page's wording on all of them.
+  const goLabel = $('go').dataset.label || ($('go').dataset.label = $('go').textContent)
   $('go').textContent = 'Creating...'
 
   try {
@@ -114,11 +117,16 @@ async function create(e) {
     $('result').hidden = false
     $('url').value = ''
     $('result').scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+
+    // On a page whose whole purpose is the code, showing the link and making
+    // people press one more button to see it is a strange way to answer the
+    // thing they came for.
+    if (document.body.dataset.autoQr) openQr()
   } catch {
     setErr('Network error. Try again.')
   } finally {
     $('go').disabled = false
-    $('go').textContent = 'Create trackable link'
+    $('go').textContent = goLabel
   }
 }
 
