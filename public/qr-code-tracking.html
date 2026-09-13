@@ -4,17 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>QR Code Tracking - Trackable QR Codes with Scan Analytics | ashrt.link</title>
-    <meta name="description" content="Generate a QR code that reports its scans. See how many people scanned, from where, and on what device. Free, no account needed." />
+    <meta name="description" content="Generate a QR code that reports its scans. See how many people scanned, from where, and on what device. The Free plan requires a verified account." />
     <link rel="canonical" href="https://www.ashrt.link/qr-code-tracking" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta property="og:type" content="article" />
     <meta property="og:site_name" content="ashrt.link" />
     <meta property="og:url" content="https://www.ashrt.link/qr-code-tracking" />
     <meta property="og:title" content="QR Code Tracking - Trackable QR Codes with Scan Analytics | ashrt.link" />
-    <meta property="og:description" content="Generate a QR code that reports its scans. See how many people scanned, from where, and on what device. Free, no account needed." />
+    <meta property="og:description" content="Generate a QR code that reports its scans. The Free plan requires a verified account." />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="QR Code Tracking - Trackable QR Codes with Scan Analytics | ashrt.link" />
-    <meta name="twitter:description" content="Generate a QR code that reports its scans. See how many people scanned, from where, and on what device. Free, no account needed." />
+    <meta name="twitter:description" content="Generate a QR code that reports its scans with a verified free account." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -24,202 +24,33 @@
     <div class="wrap">
       <header>
         <a class="logo" href="/">
-          <svg viewBox="0 0 32 32" aria-hidden="true">
-            <rect width="32" height="32" rx="8" fill="#14141b" stroke="#2a2a38" />
-            <path d="M13 19l6-6M12.5 14.5l-2 2a3.5 3.5 0 0 0 5 5l2-2M19.5 17.5l2-2a3.5 3.5 0 0 0-5-5l-2 2"
-              fill="none" stroke="#818cf8" stroke-width="2" stroke-linecap="round" />
-          </svg>
+          <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#14141b" stroke="#2a2a38" /><path d="M13 19l6-6M12.5 14.5l-2 2a3.5 3.5 0 0 0 5 5l2-2M19.5 17.5l2-2a3.5 3.5 0 0 0-5-5l-2 2" fill="none" stroke="#818cf8" stroke-width="2" stroke-linecap="round" /></svg>
           ashrt<span class="dot">.link</span>
         </a>
         <nav id="nav" class="nav"></nav>
       </header>
-
-      <nav class="crumbs" aria-label="Breadcrumb">
-        <a href="/">Free link tracker</a> <span>/</span> <span>QR code tracking</span>
-      </nav>
-
-      <section class="hero hero-tool">
-        <h1>QR code tracking</h1>
-        <p class="hero-sub">Make a QR code that tells you whether anyone scanned it. Every scan is recorded with country, device and time before the phone opens your page.</p>
-      </section>
-
+      <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Free link tracker</a> <span>/</span> <span>QR code tracking</span></nav>
+      <section class="hero hero-tool"><h1>QR code tracking</h1><p class="hero-sub">Make a QR code that tells you whether anyone scanned it. Every scan is recorded with country, device and time before the phone opens your page.</p></section>
       <section class="create" id="tool">
-        <form class="create-row" id="create-form">
-          <input id="url" type="text" inputmode="url" autocomplete="off"
-            placeholder="Paste your URL here" aria-label="URL to track" />
-          <button id="go" class="btn" type="submit">Create trackable link</button>
-        </form>
-        <div class="create-meta">
-          <button type="button" class="link-btn" id="more-toggle">Add a campaign or UTM tags</button>
-          <span class="hint-inline">No account needed. Your link works immediately.</span>
-        </div>
-        <div id="advanced" class="quick-advanced" hidden>
-          <div class="quick-fields">
-            <label>
-              <span>Custom link <em id="alias-lock">(free account)</em></span>
-              <input id="alias" class="mono" type="text" placeholder="spring-sale" />
-            </label>
-            <label><span>utm_source</span><input id="utm_source" type="text" placeholder="newsletter" /></label>
-            <label><span>utm_medium</span><input id="utm_medium" type="text" placeholder="email" /></label>
-            <label><span>utm_campaign</span><input id="utm_campaign" type="text" placeholder="spring_launch" /></label>
-          </div>
-        </div>
+        <form class="create-row" id="create-form"><input id="url" type="text" inputmode="url" autocomplete="off" placeholder="Paste your URL here" aria-label="URL to track" /><button id="go" class="btn" type="submit">Create trackable link</button></form>
+        <div class="create-meta"><button type="button" class="link-btn" id="more-toggle">Add a campaign or UTM tags</button><span class="hint-inline">Verify a free account to keep permanent tracked QR links and manage them.</span></div>
+        <div id="advanced" class="quick-advanced" hidden><div class="quick-fields"><label><span>Custom link <em id="alias-lock">(free account)</em></span><input id="alias" class="mono" type="text" placeholder="spring-sale" /></label><label><span>utm_source</span><input id="utm_source" type="text" placeholder="newsletter" /></label><label><span>utm_medium</span><input id="utm_medium" type="text" placeholder="email" /></label><label><span>utm_campaign</span><input id="utm_campaign" type="text" placeholder="spring_launch" /></label></div></div>
         <div id="err" class="quick-err"></div>
-        <div id="result" class="tool-result" hidden>
-          <div class="tool-result-head">
-            <div>
-              <div class="tool-result-label">Your trackable link</div>
-              <a id="result-link" class="mono tool-result-url" href="#" target="_blank" rel="noreferrer"></a>
-            </div>
-            <div class="tool-result-actions">
-              <button type="button" class="btn" id="result-copy">Copy</button>
-              <a class="btn btn-ghost" id="result-stats" href="#">View analytics</a>
-              <button type="button" class="btn btn-ghost" id="result-qr">QR code</button>
-            </div>
-          </div>
-          <div class="tool-result-foot">
-            <span id="result-clicks">0 clicks so far</span>
-            <span id="result-expiry"></span>
-            <a class="tool-result-cta" href="/signup" id="result-save">Save this link to a free account</a>
-          </div>
-        </div>
+        <div id="result" class="tool-result" hidden><div class="tool-result-head"><div><div class="tool-result-label">Your trackable link</div><a id="result-link" class="mono tool-result-url" href="#" target="_blank" rel="noreferrer"></a></div><div class="tool-result-actions"><button type="button" class="btn" id="result-copy">Copy</button><a class="btn btn-ghost" id="result-stats" href="#">View analytics</a><button type="button" class="btn btn-ghost" id="result-qr">QR code</button></div></div><div class="tool-result-foot"><span id="result-clicks">0 clicks so far</span><span id="result-expiry"></span><a class="tool-result-cta" href="/signup" id="result-save">Save this link to a verified free account</a></div></div>
       </section>
-
       <section class="article">
-        <h2>Why a plain QR code tells you nothing</h2>
-        <p>
-          A QR code is just a picture of a URL. Generate one that encodes your page
-          directly and the scan goes straight from the phone to your site: nothing in
-          between ever counts it. You can print a thousand flyers and have no way of
-          knowing whether one person scanned or none did.
-        </p>
-        <p>
-          Worse, the URL is baked into the printed pattern. If the destination moves,
-          every code already printed points at a dead page, and there is nothing to do
-          about it except reprint.
-        </p>
-
-        <h2>How a tracked QR code works</h2>
-        <p>
-          The code encodes a short tracking link instead of the destination. A scan
-          opens that link, the visit is recorded, and the phone is forwarded on. The
-          person scanning sees their browser open your page, same as always.
-        </p>
-        <p>
-          Because the printed pattern encodes the short link and not the destination,
-          you can change where it points afterwards. The poster on the wall keeps
-          working when the campaign page moves.
-        </p>
-
-        <h2>What a scan can and cannot tell you</h2>
-        <p>
-          Recorded: the time, the country, the device type, the browser and operating
-          system. That is enough to answer the questions worth asking about print,
-          which are whether anyone scanned, when, and roughly where.
-        </p>
-        <p>
-          Not recorded: who the person is. A scan from a phone camera usually arrives
-          with no referrer at all, so it shows as direct traffic. If you need to tell
-          the cafe flyer from the conference banner, that distinction has to come from
-          using a different link for each placement, not from the analytics.
-        </p>
-
-        <h2>One code per placement</h2>
-        <p>
-          The single most useful habit with print is a separate tracking link, and so
-          a separate code, for each place the code physically appears. Same
-          destination, different short links. Then the numbers answer a real
-          question: the conference banner pulled 40 scans, the flyers pulled 3, print
-          more banners.
-        </p>
-        <p>
-          Adding <code>utm_source</code> to each one carries that distinction into the
-          destination site&rsquo;s analytics too, so scans do not all collapse into
-          &ldquo;direct&rdquo; there.
-        </p>
-
-        <h2>Printing them so they actually scan</h2>
-        <ul class="tips">
-          <li><b>Size to distance.</b> Rough rule: the code should be about a tenth of the scanning distance. A poster read from 3m wants a code around 30cm.</li>
-          <li><b>Keep the quiet zone.</b> The blank margin around the pattern is part of the code. Crowding it with a border is the most common reason a code fails to scan.</li>
-          <li><b>Contrast, and the right way round.</b> Dark pattern on a light background. Inverted codes fail on many scanners.</li>
-          <li><b>Download the SVG for print.</b> It stays sharp at any size; a small PNG blown up to poster scale will not scan reliably.</li>
-          <li><b>Test the actual print.</b> Scan the proof, not the file on screen, with more than one phone.</li>
-        </ul>
+        <h2>Why a plain QR code tells you nothing</h2><p>A QR code is just a picture of a URL. Generate one that encodes your page directly and the scan goes straight from the phone to your site: nothing in between ever counts it. You can print a thousand flyers and have no way of knowing whether one person scanned or none did.</p><p>Worse, the URL is baked into the printed pattern. If the destination moves, every code already printed points at a dead page, and there is nothing to do about it except reprint.</p>
+        <h2>How a tracked QR code works</h2><p>The code encodes a short tracking link instead of the destination. A scan opens that link, the visit is recorded, and the phone is forwarded on. The person scanning sees their browser open your page, same as always.</p><p>Because the printed pattern encodes the short link and not the destination, you can change where it points afterwards. The poster on the wall keeps working when the campaign page moves.</p>
+        <h2>What a scan can and cannot tell you</h2><p>Recorded: the time, the country, the device type, the browser and operating system. That is enough to answer the questions worth asking about print, which are whether anyone scanned, when, and roughly where.</p><p>Not recorded: who the person is. A scan from a phone camera usually arrives with no referrer at all, so it shows as direct traffic. If you need to tell the cafe flyer from the conference banner, that distinction has to come from using a different link for each placement, not from the analytics.</p>
+        <h2>One code per placement</h2><p>The single most useful habit with print is a separate tracking link, and so a separate code, for each place the code physically appears. Same destination, different short links. Then the numbers answer a real question: the conference banner pulled 40 scans, the flyers pulled 3, print more banners.</p><p>Adding <code>utm_source</code> to each one carries that distinction into the destination site&rsquo;s analytics too, so scans do not all collapse into &ldquo;direct&rdquo; there.</p>
+        <h2>Printing them so they actually scan</h2><ul class="tips"><li><b>Size to distance.</b> Rough rule: the code should be about a tenth of the scanning distance. A poster read from 3m wants a code around 30cm.</li><li><b>Keep the quiet zone.</b> The blank margin around the pattern is part of the code. Crowding it with a border is the most common reason a code fails to scan.</li><li><b>Contrast, and the right way round.</b> Dark pattern on a light background. Inverted codes fail on many scanners.</li><li><b>Download the SVG for print.</b> It stays sharp at any size; a small PNG blown up to poster scale will not scan reliably.</li><li><b>Test the actual print.</b> Scan the proof, not the file on screen, with more than one phone.</li></ul>
       </section>
-
-      <section class="related">
-        <h2>Related</h2>
-        <div class="related-links">
-          <a href="/">Free link tracker</a>
-          <a href="/utm-link-tracker">UTM link tracker</a>
-          <a href="/qr-code-tracking">QR code tracking</a>
-        </div>
-      </section>
-
-      <div id="qr-modal" class="modal-backdrop">
-        <div class="modal">
-          <h3>QR code</h3>
-          <div id="qr-preview" class="qr-preview"></div>
-          <div id="qr-target" class="qr-target mono"></div>
-          <div class="modal-actions">
-            <a id="qr-png" class="btn btn-ghost" href="#" download>PNG</a>
-            <a id="qr-svg" class="btn btn-ghost" href="#" download>SVG</a>
-            <button id="qr-close" class="btn">Close</button>
-          </div>
-        </div>
-      </div>
-
-      <footer>
-        <span>© 2026 ashrt.link</span>
-        <span class="foot-links">
-          <a href="/privacy">Privacy</a> &middot;
-          <a href="/terms">Terms</a> &middot;
-          <a href="/report">Report a link</a>
-        </span>
-      </footer>
+      <section class="related"><h2>Related</h2><div class="related-links"><a href="/">Free link tracker</a><a href="/utm-link-tracker">UTM link tracker</a><a href="/qr-code-tracking">QR code tracking</a></div></section>
+      <div id="qr-modal" class="modal-backdrop"><div class="modal"><h3>QR code</h3><div id="qr-preview" class="qr-preview"></div><div id="qr-target" class="qr-target mono"></div><div class="modal-actions"><a id="qr-png" class="btn btn-ghost" href="#" download>PNG</a><a id="qr-svg" class="btn btn-ghost" href="#" download>SVG</a><button id="qr-close" class="btn">Close</button></div></div></div>
+      <footer><span>© 2026 ashrt.link</span><span class="foot-links"><a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a> &middot; <a href="/report">Report a link</a></span></footer>
     </div>
-
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "BreadcrumbList",
-      "itemListElement": [
-        { "@type": "ListItem", "position": 1, "name": "Free link tracker", "item": "https://www.ashrt.link/" },
-        { "@type": "ListItem", "position": 2, "name": "QR code tracking", "item": "https://www.ashrt.link/qr-code-tracking" }
-      ]
-    }
-    </script>
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "FAQPage",
-      "mainEntity": [
-        {
-          "@type": "Question",
-          "name": "Can I track scans of a QR code I already printed?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Only if it already encodes a tracking link. A QR code that encodes your destination directly cannot be tracked after printing, because the scan never passes through anything that could count it." }
-        },
-        {
-          "@type": "Question",
-          "name": "Can I change where a QR code points after printing it?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Yes, if the code encodes a tracking link. The printed pattern stays the same and you edit the destination the link forwards to." }
-        },
-        {
-          "@type": "Question",
-          "name": "Do QR scans show up separately from clicks?",
-          "acceptedAnswer": { "@type": "Answer", "text": "A scan is recorded the same way a click is, since both are a visit to the tracking link. To separate them, use a dedicated link for the QR code so its scans are counted on their own." }
-        },
-        {
-          "@type": "Question",
-          "name": "What file format should I use for print?",
-          "acceptedAnswer": { "@type": "Answer", "text": "SVG. It is a vector, so it stays sharp at any size. PNG is fine for screens and small digital placements." }
-        }
-      ]
-    }
-    </script>
-    <script src="/guest-store.js"></script>
-    <script src="/landing.js"></script>
-    <script src="/events.js"></script>
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Free link tracker","item":"https://www.ashrt.link/"},{"@type":"ListItem","position":2,"name":"QR code tracking","item":"https://www.ashrt.link/qr-code-tracking"}]}</script>
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Can I track scans of a QR code I already printed?","acceptedAnswer":{"@type":"Answer","text":"Only if it already encodes a tracking link. A QR code that encodes your destination directly cannot be tracked after printing, because the scan never passes through anything that could count it."}},{"@type":"Question","name":"Can I change where a QR code points after printing it?","acceptedAnswer":{"@type":"Answer","text":"Yes, if the code encodes a tracking link. The printed pattern stays the same and you edit the destination the link forwards to."}},{"@type":"Question","name":"Does the Free plan require an account?","acceptedAnswer":{"@type":"Answer","text":"Yes. The Free plan requires a verified account before permanent tracked QR links and account features are enabled."}},{"@type":"Question","name":"Do QR scans show up separately from clicks?","acceptedAnswer":{"@type":"Answer","text":"A scan is recorded the same way a click is, since both are a visit to the tracking link. To separate them, use a dedicated link for the QR code so its scans are counted on their own."}},{"@type":"Question","name":"What file format should I use for print?","acceptedAnswer":{"@type":"Answer","text":"SVG. It is a vector, so it stays sharp at any size. PNG is fine for screens and small digital placements."}}]}</script>
+    <script src="/guest-store.js"></script><script src="/landing.js"></script><script src="/events.js"></script>
   </body>
 </html>
