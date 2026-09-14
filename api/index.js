@@ -7,6 +7,7 @@ import { store, users } from '../store.js'
 import { guestId, readToken } from '../auth.js'
 import { clientIp, hashClient } from '../lib/ratelimit.js'
 import { runStartupMaintenance } from '../lib/startup-maintenance.js'
+import { seoPageForPath, renderSeoPage, sitemapXml, SEO_PAGE_COUNT } from '../lib/seo-pages.js'
 import {
   emailVerificationConfigured,
   isEmailVerified,
@@ -289,6 +290,27 @@ outer.use(async (req, res, next) => {
     // The inner app remains authoritative for auth failures.
   }
   next()
+})
+
+// SEO pages are data-driven so the site can cover high-intent feature,
+// solution, industry, guide, and comparison searches without maintaining a
+// hundred near-identical HTML files. Each route renders unique intent-specific
+// copy, metadata, FAQ schema, breadcrumbs, related links, and a conversion CTA.
+outer.get('/sitemap.xml', (_req, res) => {
+  res
+    .type('application/xml')
+    .set('Cache-Control', 'public, max-age=3600, s-maxage=3600')
+    .send(sitemapXml())
+})
+
+outer.get('*', (req, res, next) => {
+  const page = seoPageForPath(req.path)
+  if (!page) return next()
+  res
+    .type('html')
+    .set('Cache-Control', 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400')
+    .set('X-SEO-Page-Count', String(SEO_PAGE_COUNT))
+    .send(renderSeoPage(page))
 })
 
 outer.use(app)
