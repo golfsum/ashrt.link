@@ -43,30 +43,27 @@ function render() {
   $('disabled').hidden = data.enabled
   $('note').textContent = data.note
 
-  const total = data.paid + data.free
+  // Keep this page focused on real live billing state. Free-account totals,
+  // Stripe customer-record counts, estimated MRR/ARR, and raw paid-account
+  // counts were misleading after test Stripe activity and spam cleanup.
+  const paid = Number(data.paid) || 0
   $('kpis').innerHTML = [
-    kpi('Estimated MRR', `$${num(data.estimatedMrr)}`, 'plan price x active subscribers'),
-    kpi('Estimated ARR', `$${num(data.estimatedArr)}`, 'MRR x 12'),
-    kpi('Paid accounts', num(data.paid), `${data.conversionRate}% of all accounts`),
-    kpi('Free accounts', num(data.free), `${num(total)} total`),
-    kpi('Stripe customers', num(data.withCustomer), 'accounts with a customer record'),
-    kpi('Needs attention', num(data.problems.length), 'failing or mismatched'),
+    kpi('Live subscriptions', num(paid), 'verified active customer accounts only'),
+    kpi('Needs attention', num(data.problems.length), 'failing or mismatched live subscriptions'),
   ].join('')
 
   $('plans').innerHTML = bars(
     [
-      { label: `Free ($${data.prices.free}/mo)`, value: data.byPlan.free },
-      { label: `Pro ($${data.prices.pro}/mo)`, value: data.byPlan.pro },
-      { label: `Business ($${data.prices.business}/mo)`, value: data.byPlan.business },
+      { label: `Pro ($${data.prices.pro}/mo)`, value: data.byPlan.pro || 0 },
+      { label: `Business ($${data.prices.business}/mo)`, value: data.byPlan.business || 0 },
     ],
-    total,
+    paid,
   )
 
-  const statusEntries = Object.entries(data.byStatus).map(([k, v]) => ({
-    label: STATUS_LABELS[k] || k,
-    value: v,
-  }))
-  $('statuses').innerHTML = bars(statusEntries, total)
+  const statusEntries = Object.entries(data.byStatus)
+    .filter(([k]) => k !== 'none')
+    .map(([k, v]) => ({ label: STATUS_LABELS[k] || k, value: v }))
+  $('statuses').innerHTML = bars(statusEntries, paid)
 
   $('problem-count').textContent = data.problems.length
     ? `${num(data.problems.length)} account${data.problems.length === 1 ? '' : 's'}`
@@ -92,7 +89,7 @@ function render() {
           </div>`,
         )
         .join('')
-    : '<div class="chart-empty">No failing payments and no accounts out of step with Stripe.</div>'
+    : '<div class="chart-empty">No failing payments and no live subscriptions out of step with Stripe.</div>'
 }
 
 ;(async () => {
