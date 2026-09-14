@@ -146,6 +146,59 @@ outer.use('/api/admin/overview', (_req, res, next) => {
   next()
 })
 
+// Billing admin should represent only legitimate live customers. Test/admin,
+// suspended, unverified, and abuse-flagged records are kept in storage for
+// audit/history but must not inflate revenue, paid-account, plan, or Stripe
+// customer metrics.
+outer.use('/api/admin/billing', (_req, res, next) => {
+  const originalJson = res.json.bind(res)
+  res.json = (body) => {
+    if (res.statusCode >= 400 || !body) return originalJson(body)
+    ;(async () => {
+      try {
+        const allUsers = await users.all()
+        const trusted = allUsers.filter(isRealCustomer)
+        const paidUsers = trusted.filter(
+          (u) => ['pro', 'business'].includes(u.plan) && ['active', 'trialing'].includes(u.subscriptionStatus || 'active'),
+        )
+        const trustedIds = new Set(trusted.map((u) => u.id))
+
+        const byPlan = { free: 0, pro: 0, business: 0 }
+        const byStatus = {}
+        let withCustomer = 0
+        for (const u of trusted) {
+          const plan = ['pro', 'business'].includes(u.plan) ? u.plan : 'free'
+          byPlan[plan] = (byPlan[plan] || 0) + 1
+          const status = u.subscriptionStatus || (plan === 'free' ? 'none' : 'active')
+          byStatus[status] = (byStatus[status] || 0) + 1
+          if (u.stripeCustomerId) withCustomer++
+        }
+
+        const estimatedMrr = paidUsers.reduce(
+          (sum, u) => sum + (u.plan === 'business' ? Number(body.prices?.business || 29) : Number(body.prices?.pro || 9)),
+          0,
+        )
+
+        body.paid = paidUsers.length
+        body.free = byPlan.free
+        body.withCustomer = withCustomer
+        body.byPlan = byPlan
+        body.byStatus = byStatus
+        body.estimatedMrr = estimatedMrr
+        body.estimatedArr = estimatedMrr * 12
+        body.conversionRate = trusted.length ? Math.round((paidUsers.length / trusted.length) * 1000) / 10 : 0
+        body.problems = Array.isArray(body.problems) ? body.problems.filter((p) => trustedIds.has(p.id)) : []
+        body.note = 'Billing metrics exclude admin/test, suspended, unverified, and abuse-flagged accounts.'
+      } catch (err) {
+        console.error('[admin billing filter]', err.message)
+      }
+      originalJson(body)
+    })()
+    return res
+  }
+  next()
+})
+
 outer.use('/auth/register', async (req, res, next) => {
   if (!emailVerificationConfigured()) {
     return res.status(503).json({
