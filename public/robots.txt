@@ -4,13 +4,18 @@ User-agent: *
 
 # Private application surfaces. These are also served with an X-Robots-Tag
 # noindex header, which is the part that actually enforces it: robots.txt is a
-# request, not a control.
+# request, not a control. Exact-match rules keep similarly named public SEO
+# pages such as /link-tracker and /qr-code-generator crawlable.
 Disallow: /dashboard
-Disallow: /links
-Disallow: /link
-Disallow: /analytics
+Disallow: /links$
+Disallow: /links/
+Disallow: /link$
+Disallow: /link/
+Disallow: /analytics$
+Disallow: /analytics/
 Disallow: /campaigns
-Disallow: /qr
+Disallow: /qr$
+Disallow: /qr/
 Disallow: /settings
 Disallow: /account
 Disallow: /developers
